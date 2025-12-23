@@ -101,12 +101,15 @@ import {
 const route = useRoute()
 const router = useRouter()
 
+// 响应式状态
 const currentUser = ref<User | null>(null)
-const isAdmin = computed(() => currentUser.value?.role === 'admin')
-const isCollapse = ref(false)
+const isCollapse = ref<boolean>(false)
 
+// 计算属性
+const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const activeMenu = computed(() => route.path)
 
+// 方法
 const toggleCollapse = () => {
   isCollapse.value = !isCollapse.value
 }

@@ -123,7 +123,9 @@ const handleSubmit = async () => {
         cancelEdit()
         loadUsers()
       } catch (error: any) {
-        ElMessage.error(error.response?.data?.message || '操作失败')
+        console.error('User operation error:', error)
+        const errorMessage = error.response?.data?.message || error.message || '操作失败，请稍后重试'
+        ElMessage.error(errorMessage)
       }
     }
   })
@@ -163,7 +165,9 @@ const deleteUser = async (id: number) => {
     loadUsers()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败')
+      console.error('Delete user error:', error)
+      const errorMessage = error.response?.data?.message || error.message || '删除失败，请稍后重试'
+      ElMessage.error(errorMessage)
     }
   }
 }
