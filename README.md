@@ -103,35 +103,68 @@
 
 ```
 yolo-helmet/
-├── web-front/              # 前端项目
+├── web-front/                      # 前端项目（Vue 3 + TypeScript）
 │   ├── src/
-│   │   ├── api/            # API 接口定义
-│   │   ├── components/     # 组件
-│   │   ├── layouts/        # 布局组件
-│   │   ├── router/         # 路由配置
-│   │   ├── views/          # 页面视图
-│   │   ├── App.vue         # 根组件
-│   │   └── main.ts         # 入口文件
-│   ├── package.json
-│   └── vite.config.ts
-├── web-backend/            # 后端项目
-│   ├── routes/             # 路由模块
-│   │   ├── auth.py         # 认证路由
-│   │   ├── detect.py       # 检测路由
-│   │   ├── models.py       # 模型管理路由
-│   │   ├── datasets.py     # 数据集管理路由
-│   │   ├── users.py        # 用户管理路由
-│   │   └── statistics.py   # 统计路由
-│   ├── utils/              # 工具模块
-│   │   ├── auth.py         # 认证工具
-│   │   └── detection.py    # 检测服务
-│   ├── models.py           # 数据库模型
-│   ├── config.py           # 配置文件
-│   ├── app.py              # 应用入口
-│   ├── init_db.py          # 数据库初始化
-│   └── requirements.txt    # 依赖列表
-├── images/                 # 项目截图和示例图片
-└── README.md              # 项目说明文档
+│   │   ├── api/                    # API 接口定义
+│   │   │   ├── auth.ts            # 认证接口
+│   │   │   ├── detect.ts          # 检测接口
+│   │   │   ├── model.ts           # 模型管理接口
+│   │   │   ├── dataset.ts         # 数据集管理接口
+│   │   │   ├── user.ts            # 用户管理接口
+│   │   │   ├── statistics.ts      # 统计接口
+│   │   │   └── index.ts           # API 配置
+│   │   ├── components/            # 可复用组件
+│   │   ├── layouts/               # 布局组件
+│   │   │   └── MainLayout.vue     # 主布局
+│   │   ├── router/                # 路由配置
+│   │   │   └── index.ts           # 路由定义
+│   │   ├── views/                 # 页面视图
+│   │   │   ├── Login.vue          # 登录页
+│   │   │   ├── Register.vue       # 注册页
+│   │   │   ├── Home.vue           # 首页
+│   │   │   ├── DetectImage.vue    # 图片检测页
+│   │   │   ├── DetectVideo.vue    # 视频检测页
+│   │   │   ├── DetectRealtime.vue # 实时检测页
+│   │   │   ├── ModelManager.vue   # 模型管理页
+│   │   │   ├── ModelInfo.vue      # 模型详情页
+│   │   │   ├── DatasetManager.vue # 数据集管理页
+│   │   │   ├── UserManager.vue    # 用户管理页
+│   │   │   └── Console.vue        # 控制台统计页
+│   │   ├── App.vue                # 根组件
+│   │   └── main.ts                # 入口文件
+│   ├── public/                    # 静态资源
+│   ├── package.json               # 依赖配置
+│   ├── vite.config.ts             # Vite 配置
+│   └── tsconfig.json              # TypeScript 配置
+├── web-backend/                   # 后端项目（Flask + Python）
+│   ├── routes/                    # 路由模块
+│   │   ├── __init__.py           # 路由注册
+│   │   ├── auth.py               # 认证路由（登录、注册）
+│   │   ├── detect.py             # 检测路由（图片、视频、实时）
+│   │   ├── models.py             # 模型管理路由
+│   │   ├── datasets.py           # 数据集管理路由
+│   │   ├── users.py              # 用户管理路由
+│   │   └── statistics.py         # 统计路由
+│   ├── utils/                     # 工具模块
+│   │   ├── auth.py               # 认证工具（JWT）
+│   │   └── detection.py          # 检测服务（YOLO）
+│   ├── instance/                  # 实例文件夹（自动创建）
+│   │   └── yolo_helmet.db        # SQLite 数据库文件
+│   ├── uploads/                   # 上传文件目录（自动创建）
+│   │   ├── images/               # 上传的图片
+│   │   ├── videos/                # 上传的视频
+│   │   ├── results/               # 检测结果文件
+│   │   └── datasets/              # 数据集文件
+│   ├── models/                    # 模型文件目录（自动创建）
+│   ├── models.py                  # 数据库模型（User, Model, Dataset, Detection）
+│   ├── config.py                  # 配置文件
+│   ├── extensions.py              # Flask 扩展初始化
+│   ├── app.py                     # 应用入口
+│   ├── init_db.py                 # 数据库初始化脚本
+│   ├── requirements.txt           # Python 依赖列表
+│   └── README.md                  # 后端说明文档
+├── images/                        # 项目截图和示例图片
+└── README.md                      # 项目说明文档（本文件）
 ```
 
 ## 安装和运行
@@ -318,8 +351,9 @@ npm run build
 
 3. **数据库**：
    - 默认使用 SQLite 数据库
-   - 数据库文件：`web-backend/yolo_helmet.db`
+   - 数据库文件：`web-backend/instance/yolo_helmet.db`（自动创建）
    - 首次运行需要执行 `init_db.py` 初始化数据库
+   - 初始化时会创建默认管理员账户和通用模型
 
 4. **实时检测**：
    - 需要浏览器支持摄像头访问
@@ -336,19 +370,123 @@ npm run build
    - 修改 `config.py` 中的 `SECRET_KEY`
    - 配置 HTTPS 和防火墙规则
 
+## 系统架构
+
+### 前端架构
+
+- **框架**：Vue 3 Composition API + TypeScript
+- **状态管理**：使用 localStorage 存储用户 token 和状态
+- **路由守卫**：基于 Vue Router 的导航守卫实现权限控制
+- **API 通信**：Axios 封装，统一错误处理和请求拦截
+- **UI 组件**：Element Plus 组件库，提供完整的 UI 解决方案
+- **数据可视化**：ECharts 用于统计图表展示
+
+### 后端架构
+
+- **框架**：Flask RESTful API
+- **数据库**：SQLAlchemy ORM + SQLite（可扩展至 PostgreSQL/MySQL）
+- **认证**：JWT Token 认证机制
+- **文件处理**：支持图片、视频上传和处理
+- **模型服务**：基于 Ultralytics YOLO 的检测服务
+- **权限控制**：基于角色的访问控制（RBAC）
+
+### 数据流
+
+1. **检测流程**：
+   - 用户上传图片/视频 → 后端接收文件 → YOLO 模型检测 → 结果标注 → 返回前端展示
+2. **数据存储**：
+   - 检测记录自动保存到数据库
+   - 上传文件临时存储，检测完成后清理
+   - 检测结果视频保存到 `uploads/results/`
+3. **模型管理**：
+   - 支持通用模型（YOLO11n）和自定义训练模型
+   - 模型文件存储在 `models/` 目录
+   - 模型元数据和指标存储在数据库
+
 ## 开发说明
 
 ### 前端开发
 
-- 开发服务器支持热重载
-- API 代理配置在 `vite.config.ts` 中
+- 开发服务器支持热重载（HMR）
+- API 代理配置在 `vite.config.ts` 中，默认代理到 `http://localhost:5000`
 - 使用 TypeScript 进行类型检查
+- 组件采用 Composition API 风格
+- 路由配置在 `src/router/index.ts`
 
 ### 后端开发
 
 - 使用 Flask 开发模式（`debug=True`）
-- 数据库迁移使用 Flask-Migrate
+- 数据库迁移使用 Flask-Migrate（可选）
 - API 响应格式统一为 JSON
+- 错误处理统一返回错误消息
+- 文件上传使用 Werkzeug 的 `secure_filename` 确保安全
+
+### 数据库模型
+
+- **User**：用户表（用户名、邮箱、密码哈希、角色）
+- **Model**：模型表（名称、类型、路径、指标）
+- **Dataset**：数据集表（名称、描述、图片数量、状态）
+- **Detection**：检测记录表（用户ID、模型ID、检测类型、统计信息）
+
+## 项目截图
+
+项目包含丰富的界面截图，位于 `images/` 目录，包括：
+
+- 登录/注册界面
+- 首页（管理员/普通用户）
+- 图片检测页面
+- 视频检测页面
+- 实时检测页面
+- 模型管理页面
+- 数据集管理页面
+- 用户管理页面
+- 控制台统计页面
+- 软件架构图
+- 技术栈图
+
+## 常见问题
+
+### Q: 如何修改默认端口？
+
+**A:** 
+- 后端：修改 `web-backend/app.py` 中的 `port=5000`
+- 前端：修改 `web-front/vite.config.ts` 中的 `server.port`
+
+### Q: 如何配置 GPU 加速？
+
+**A:** 
+1. 安装 CUDA 版本的 PyTorch：
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+2. 确保系统已安装 CUDA 驱动
+3. 检测服务会自动使用 GPU（如果可用）
+
+### Q: 如何添加新的检测类别？
+
+**A:** 
+1. 训练包含新类别的 YOLO 模型
+2. 修改 `web-backend/utils/detection.py` 中的 `class_names` 字典
+3. 上传新模型到系统
+
+### Q: 数据库迁移后如何恢复？
+
+**A:** 
+```bash
+cd web-backend
+rm instance/yolo_helmet.db
+python init_db.py
+```
+
+### Q: 如何部署到生产环境？
+
+**A:** 
+1. 使用 Gunicorn 或 uWSGI 运行 Flask 应用
+2. 使用 Nginx 作为反向代理
+3. 前端构建后部署静态文件
+4. 配置 HTTPS 和 SSL 证书
+5. 修改 `SECRET_KEY` 和默认密码
+6. 使用 PostgreSQL 或 MySQL 替代 SQLite
 
 ## 许可证
 
@@ -356,4 +494,17 @@ npm run build
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request。
+欢迎提交 Issue 和 Pull Request。在提交 PR 前，请确保：
+
+1. 代码符合项目规范
+2. 已通过测试
+3. 更新了相关文档
+
+## 更新日志
+
+### v1.0.0
+- 初始版本发布
+- 支持图片、视频、实时检测
+- 完整的用户管理和权限控制
+- 模型和数据集管理功能
+- 数据统计分析功能
