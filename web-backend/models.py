@@ -63,6 +63,11 @@ class Dataset(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     image_count = db.Column(db.Integer, default=0)
+    file_size = db.Column(db.BigInteger, default=0)  # 文件大小（字节）
+    status = db.Column(db.String(20), default='pending')  # pending, validated, failed
+    train_count = db.Column(db.Integer, default=0)  # 训练集数量
+    val_count = db.Column(db.Integer, default=0)  # 验证集数量
+    test_count = db.Column(db.Integer, default=0)  # 测试集数量
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def to_dict(self):
@@ -71,6 +76,11 @@ class Dataset(db.Model):
             'name': self.name,
             'description': self.description,
             'image_count': self.image_count,
+            'file_size': self.file_size,
+            'status': self.status,
+            'train_count': self.train_count,
+            'val_count': self.val_count,
+            'test_count': self.test_count,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

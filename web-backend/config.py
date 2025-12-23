@@ -3,7 +3,11 @@ from pathlib import Path
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///yolo_helmet.db'
+    # Use instance folder for database (Flask convention)
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    instance_path = os.path.join(basedir, 'instance')
+    os.makedirs(instance_path, exist_ok=True)
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(instance_path, "yolo_helmet.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # File upload settings
