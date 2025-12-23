@@ -4,14 +4,38 @@
       <template #header>
         <div class="card-header">
           <span>实时检测</span>
-          <el-select v-model="selectedModelId" placeholder="选择模型" style="width: 200px" clearable>
+          <el-select 
+            v-model="selectedModelId" 
+            placeholder="选择模型" 
+            style="width: 250px" 
+            clearable
+            @change="handleModelChange"
+          >
             <el-option
               v-for="model in models"
               :key="model.id"
               :label="model.name"
               :value="model.id"
-            />
+            >
+              <span>{{ model.name }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">
+                {{ model.type === 'general' ? '通用' : '自定义' }}
+                <el-tag v-if="!model.metrics" type="warning" size="small" style="margin-left: 5px;">未训练</el-tag>
+              </span>
+            </el-option>
           </el-select>
+          <el-alert
+            v-if="models.length === 0"
+            title="未找到可用模型"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-top: 10px; width: 250px"
+          >
+            <template #default>
+              <span>请先在模型管理中创建或上传模型</span>
+            </template>
+          </el-alert>
         </div>
       </template>
 
@@ -113,7 +137,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { detectApi } from '../api/detect'
 import { modelApi, type Model } from '../api/model'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoCamera } from '@element-plus/icons-vue'
 
 const models = ref<Model[]>([])
@@ -142,7 +166,56 @@ const detectionRate = computed(() => {
   return ((stats.value.withHelmet / stats.value.total) * 100).toFixed(1)
 })
 
+const handleModelChange = (modelId: number | undefined) => {
+  if (modelId) {
+    const model = models.value.find(m => m.id === modelId)
+    if (model && !model.metrics) {
+      ElMessage.warning({
+        message: `模型"${model.name}"尚未训练完成，可能无法正常使用`,
+        duration: 5000
+      })
+    }
+  }
+}
+
+const validateModel = async (): Promise<boolean> => {
+  if (selectedModelId.value) {
+    try {
+      const model = models.value.find(m => m.id === selectedModelId.value)
+      if (!model) {
+        ElMessage.error('选择的模型不存在，请重新选择')
+        return false
+      }
+      
+      // 检查模型是否训练完成
+      if (!model.metrics) {
+        await ElMessageBox.confirm(
+          `模型"${model.name}"尚未训练完成，是否继续使用？`,
+          '模型未训练',
+          {
+            confirmButtonText: '继续使用',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      }
+    } catch (error: any) {
+      if (error === 'cancel') {
+        selectedModelId.value = undefined
+      }
+      return false
+    }
+  }
+  return true
+}
+
 const startDetection = async () => {
+  // 验证模型
+  const isModelValid = await validateModel()
+  if (!isModelValid) {
+    return
+  }
+
   starting.value = true
   try {
     // Request camera access
@@ -158,7 +231,22 @@ const startDetection = async () => {
     startFrameCapture()
     ElMessage.success('实时检测已启动')
   } catch (error: any) {
-    ElMessage.error('无法访问摄像头: ' + (error.message || '未知错误'))
+    const errorMessage = error.message || '未知错误'
+    
+    // 检查是否是模型相关错误
+    if (errorMessage.includes('model') || errorMessage.includes('模型') || 
+        errorMessage.includes('Model') || errorMessage.includes('not found') ||
+        errorMessage.includes('不存在') || errorMessage.includes('无法加载')) {
+      ElMessage.error({
+        message: '模型加载失败，请检查模型文件是否存在或选择其他模型',
+        duration: 5000
+      })
+    } else if (errorMessage.includes('摄像头') || errorMessage.includes('camera') || 
+               errorMessage.includes('permission') || errorMessage.includes('权限')) {
+      ElMessage.error('无法访问摄像头: ' + errorMessage)
+    } else {
+      ElMessage.error('启动失败: ' + errorMessage)
+    }
   } finally {
     starting.value = false
   }
@@ -228,8 +316,23 @@ const startFrameCapture = () => {
         ctx.drawImage(videoElement.value, 0, 0)
         // Draw detections would go here
       }
-    } catch (error) {
-      console.error('Failed to get frame:', error)
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || '获取检测帧失败'
+      
+      // 检查是否是模型相关错误
+      if (errorMessage.includes('model') || errorMessage.includes('模型') || 
+          errorMessage.includes('Model') || errorMessage.includes('not found') ||
+          errorMessage.includes('不存在') || errorMessage.includes('无法加载') ||
+          errorMessage.includes('not active')) {
+        ElMessage.error({
+          message: '模型检测失败，请检查模型状态',
+          duration: 3000
+        })
+        // 停止检测
+        stopDetection()
+      } else {
+        console.error('Failed to get frame:', error)
+      }
     }
   }, 1000) // Capture every second
 }

@@ -27,13 +27,13 @@
           <el-menu-item index="/detect/video">视频检测</el-menu-item>
           <el-menu-item index="/detect/realtime">实时检测</el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/model/manager" v-if="isAdmin">
-          <el-icon><Box /></el-icon>
-          <span>模型管理</span>
-        </el-menu-item>
         <el-menu-item index="/dataset/manager" v-if="isAdmin">
           <el-icon><Folder /></el-icon>
           <span>数据集管理</span>
+        </el-menu-item>
+        <el-menu-item index="/model/manager" v-if="isAdmin">
+          <el-icon><Box /></el-icon>
+          <span>模型管理</span>
         </el-menu-item>
         <el-menu-item index="/user/manager" v-if="isAdmin">
           <el-icon><UserIcon /></el-icon>

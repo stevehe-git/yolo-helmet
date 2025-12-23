@@ -18,8 +18,14 @@ def get_detection_service(model_id=None):
     global detection_service
     if model_id:
         model = Model.query.get(model_id)
-        if model and Path(model.path).exists():
+        if not model:
+            raise ValueError(f'模型 ID {model_id} 不存在')
+        if not Path(model.path).exists():
+            raise FileNotFoundError(f'模型文件不存在: {model.path}')
+        try:
             return DetectionService(model.path)
+        except Exception as e:
+            raise RuntimeError(f'无法加载模型: {str(e)}')
     return DetectionService()
 
 @detect_bp.route('/image', methods=['POST'])
@@ -58,8 +64,11 @@ def detect_image():
         db.session.commit()
         
         return jsonify(result), 200
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        # 模型相关错误
+        return jsonify({'message': f'模型错误: {str(e)}'}), 400
     except Exception as e:
-        return jsonify({'message': f'Detection failed: {str(e)}'}), 500
+        return jsonify({'message': f'检测失败: {str(e)}'}), 500
     finally:
         # Clean up uploaded file
         if filepath.exists():
@@ -102,8 +111,11 @@ def detect_video():
         db.session.commit()
         
         return jsonify(result), 200
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        # 模型相关错误
+        return jsonify({'message': f'模型错误: {str(e)}'}), 400
     except Exception as e:
-        return jsonify({'message': f'Detection failed: {str(e)}'}), 500
+        return jsonify({'message': f'检测失败: {str(e)}'}), 500
     finally:
         # Clean up uploaded file
         if filepath.exists():
@@ -116,8 +128,17 @@ def start_realtime():
     data = request.get_json()
     model_id = data.get('model_id') if data else None
     
-    realtime_active = True
-    return jsonify({'message': 'Realtime detection started'}), 200
+    try:
+        # 验证模型
+        if model_id:
+            get_detection_service(model_id)
+        
+        realtime_active = True
+        return jsonify({'message': 'Realtime detection started'}), 200
+    except (ValueError, FileNotFoundError, RuntimeError) as e:
+        return jsonify({'message': f'模型错误: {str(e)}'}), 400
+    except Exception as e:
+        return jsonify({'message': f'启动失败: {str(e)}'}), 500
 
 @detect_bp.route('/realtime/stop', methods=['POST'])
 @login_required

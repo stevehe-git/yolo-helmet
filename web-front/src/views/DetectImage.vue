@@ -4,14 +4,38 @@
       <template #header>
         <div class="card-header">
           <span>图片检测</span>
-          <el-select v-model="selectedModelId" placeholder="选择模型" style="width: 200px" clearable>
+          <el-select 
+            v-model="selectedModelId" 
+            placeholder="选择模型" 
+            style="width: 250px" 
+            clearable
+            @change="handleModelChange"
+          >
             <el-option
               v-for="model in models"
               :key="model.id"
               :label="model.name"
               :value="model.id"
-            />
+            >
+              <span>{{ model.name }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">
+                {{ model.type === 'general' ? '通用' : '自定义' }}
+                <el-tag v-if="!model.metrics" type="warning" size="small" style="margin-left: 5px;">未训练</el-tag>
+              </span>
+            </el-option>
           </el-select>
+          <el-alert
+            v-if="models.length === 0"
+            title="未找到可用模型"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-top: 10px; width: 250px"
+          >
+            <template #default>
+              <span>请先在模型管理中创建或上传模型</span>
+            </template>
+          </el-alert>
         </div>
       </template>
       
@@ -100,7 +124,7 @@
 import { ref, onMounted } from 'vue'
 import { detectApi, type DetectResult } from '../api/detect'
 import { modelApi, type Model } from '../api/model'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
@@ -120,9 +144,63 @@ const clearFile = () => {
   detectResult.value = null
 }
 
+const handleModelChange = (modelId: number | undefined) => {
+  if (modelId) {
+    const model = models.value.find(m => m.id === modelId)
+    if (model && !model.metrics) {
+      ElMessage.warning({
+        message: `模型"${model.name}"尚未训练完成，可能无法正常使用`,
+        duration: 5000
+      })
+    }
+  }
+}
+
+const validateModel = async (): Promise<boolean> => {
+  if (selectedModelId.value) {
+    try {
+      const model = models.value.find(m => m.id === selectedModelId.value)
+      if (!model) {
+        ElMessage.error('选择的模型不存在，请重新选择')
+        return false
+      }
+      
+      // 检查模型是否训练完成
+      if (!model.metrics) {
+        try {
+          await ElMessageBox.confirm(
+            `模型"${model.name}"尚未训练完成，是否继续使用？`,
+            '模型未训练',
+            {
+              confirmButtonText: '继续使用',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }
+          )
+        } catch (error: any) {
+          if (error === 'cancel') {
+            selectedModelId.value = undefined
+          }
+          return false
+        }
+      }
+    } catch (error) {
+      ElMessage.error('模型验证失败')
+      return false
+    }
+  }
+  return true
+}
+
 const handleDetect = async () => {
   if (!selectedFile.value) {
     ElMessage.warning('请先选择图片')
+    return
+  }
+
+  // 验证模型
+  const isModelValid = await validateModel()
+  if (!isModelValid) {
     return
   }
 
@@ -138,7 +216,19 @@ const handleDetect = async () => {
     detectResult.value = result
     ElMessage.success('检测完成')
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '检测失败')
+    const errorMessage = error.response?.data?.message || error.message || '检测失败'
+    
+    // 检查是否是模型相关错误
+    if (errorMessage.includes('model') || errorMessage.includes('模型') || 
+        errorMessage.includes('Model') || errorMessage.includes('not found') ||
+        errorMessage.includes('不存在') || errorMessage.includes('无法加载')) {
+      ElMessage.error({
+        message: '模型加载失败，请检查模型文件是否存在或选择其他模型',
+        duration: 5000
+      })
+    } else {
+      ElMessage.error(errorMessage)
+    }
   } finally {
     detecting.value = false
   }
