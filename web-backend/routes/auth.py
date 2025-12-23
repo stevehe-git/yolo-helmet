@@ -13,17 +13,17 @@ def register():
     email = data.get('email')
     
     if not username or not password:
-        return jsonify({'message': 'Username and password are required'}), 400
+        return jsonify({'message': '用户名和密码不能为空'}), 400
     
     if User.query.filter_by(username=username).first():
-        return jsonify({'message': 'Username already exists'}), 400
+        return jsonify({'message': '用户名已存在'}), 400
     
     user = User(username=username, email=email)
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
     
-    return jsonify({'message': 'User created successfully'}), 201
+    return jsonify({'message': '注册成功'}), 201
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -32,11 +32,14 @@ def login():
     password = data.get('password')
     
     if not username or not password:
-        return jsonify({'message': 'Username and password are required'}), 400
+        return jsonify({'message': '用户名和密码不能为空'}), 400
     
     user = User.query.filter_by(username=username).first()
-    if not user or not user.check_password(password):
-        return jsonify({'message': 'Invalid credentials'}), 401
+    if not user:
+        return jsonify({'message': '用户名或密码错误'}), 401
+    
+    if not user.check_password(password):
+        return jsonify({'message': '用户名或密码错误'}), 401
     
     token = generate_token(user.id)
     return jsonify({
@@ -53,7 +56,7 @@ def logout():
 def get_current_user_info():
     user = get_current_user()
     if not user:
-        return jsonify({'message': 'Authentication required'}), 401
+        return jsonify({'message': '需要登录'}), 401
     
     return jsonify(user.to_dict()), 200
 

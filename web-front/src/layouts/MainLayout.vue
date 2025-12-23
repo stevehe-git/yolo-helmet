@@ -1,11 +1,13 @@
 <template>
   <el-container class="layout-container">
-    <el-aside width="200px" class="sidebar">
+    <el-aside :width="isCollapse ? '64px' : '200px'" class="sidebar">
       <div class="logo">
-        <h2>安全帽检测</h2>
+        <el-icon :size="24" :style="{ marginRight: isCollapse ? '0' : '8px' }"><Lock /></el-icon>
+        <h2 v-show="!isCollapse">安全帽检测</h2>
       </div>
       <el-menu
         :default-active="activeMenu"
+        :collapse="isCollapse"
         router
         class="sidebar-menu"
         background-color="#304156"
@@ -43,9 +45,15 @@
         </el-menu-item>
       </el-menu>
     </el-aside>
-    <el-container>
-      <el-header class="header">
+    <el-container style="width: 100%; height: 100%;">
+      <el-header class="header" style="width: 100%;">
         <div class="header-left">
+          <el-button
+            :icon="isCollapse ? Expand : Fold"
+            circle
+            @click="toggleCollapse"
+            style="margin-right: 15px;"
+          />
           <span class="title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
@@ -63,7 +71,7 @@
           </el-dropdown>
         </div>
       </el-header>
-      <el-main class="main-content">
+      <el-main class="main-content" style="width: 100%; height: calc(100vh - 60px);">
         <router-view />
       </el-main>
     </el-container>
@@ -84,7 +92,10 @@ import {
   Folder,
   User as UserIcon,
   DataAnalysis,
-  ArrowDown
+  ArrowDown,
+  Lock,
+  Fold,
+  Expand
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -92,8 +103,13 @@ const router = useRouter()
 
 const currentUser = ref<User | null>(null)
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const isCollapse = ref(false)
 
 const activeMenu = computed(() => route.path)
+
+const toggleCollapse = () => {
+  isCollapse.value = !isCollapse.value
+}
 
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
@@ -130,32 +146,57 @@ onMounted(() => {
 
 <style scoped>
 .layout-container {
+  width: 100%;
   height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .sidebar {
   background-color: #304156;
   overflow: hidden;
+  flex-shrink: 0;
+  transition: width 0.3s;
 }
 
 .logo {
   height: 60px;
   line-height: 60px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background-color: #2b3a4a;
   color: #fff;
+  padding: 0 10px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.logo .el-icon {
+  color: #fff;
+  flex-shrink: 0;
 }
 
 .logo h2 {
   margin: 0;
   font-size: 18px;
   font-weight: 500;
+  display: inline-block;
 }
 
 .sidebar-menu {
   border-right: none;
   height: calc(100vh - 60px);
   overflow-y: auto;
+}
+
+.sidebar-menu:not(.el-menu--collapse) {
+  width: 200px;
+}
+
+.sidebar-menu.el-menu--collapse {
+  width: 64px;
 }
 
 .header {
@@ -190,9 +231,12 @@ onMounted(() => {
 }
 
 .main-content {
+  width: 100%;
+  height: 100%;
   background-color: #f0f2f5;
   padding: 20px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 </style>
 

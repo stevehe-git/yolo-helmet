@@ -65,7 +65,17 @@ const handleLogin = async () => {
         ElMessage.success('登录成功')
         router.push('/')
       } catch (error: any) {
-        ElMessage.error(error.response?.data?.message || '登录失败')
+        console.error('Login error:', error)
+        // Try multiple ways to get error message
+        let errorMessage = '登录失败，请检查用户名和密码'
+        if (error.response?.data?.message) {
+          errorMessage = error.response.data.message
+        } else if (error.message) {
+          errorMessage = error.message
+        } else if (typeof error === 'string') {
+          errorMessage = error
+        }
+        ElMessage.error(errorMessage)
       } finally {
         loading.value = false
       }
@@ -79,7 +89,10 @@ const handleLogin = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
+  width: 100%;
   height: 100vh;
+  margin: 0;
+  padding: 0;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 

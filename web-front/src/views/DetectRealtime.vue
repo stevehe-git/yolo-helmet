@@ -47,7 +47,7 @@
                   ref="videoElement"
                   autoplay
                   playsinline
-                  style="width: 100%; max-height: 500px"
+                  class="video-element"
                 ></video>
                 <canvas ref="canvasElement" style="display: none"></canvas>
                 <div v-if="!isRunning" class="placeholder">
@@ -280,20 +280,49 @@ onUnmounted(() => {
 
 .video-container {
   position: relative;
+  width: 100%;
   min-height: 400px;
   background: #000;
   display: flex;
   justify-content: center;
   align-items: center;
+  overflow: hidden;
+}
+
+.video-element {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 500px;
+  object-fit: contain;
+}
+
+/* 当视频未加载时，确保容器有足够高度 */
+.video-container {
+  min-height: 500px;
 }
 
 .placeholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   text-align: center;
+  color: #909399;
+  z-index: 1;
+}
+
+.placeholder .el-icon {
+  display: block;
+  margin: 0 auto;
   color: #909399;
 }
 
 .placeholder p {
   margin-top: 20px;
+  margin-bottom: 0;
+  font-size: 14px;
 }
 
 .stats {

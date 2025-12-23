@@ -28,11 +28,22 @@ api.interceptors.response.use(
     return response.data
   },
   (error) => {
+    // Only redirect to login if not already on login/register page
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
+      const currentPath = window.location.pathname
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        localStorage.removeItem('token')
+        window.location.href = '/login'
+      }
     }
-    return Promise.reject(error)
+    // Preserve error response for proper error handling
+    // Return error with response data attached
+    const errorWithData = {
+      ...error,
+      message: error.response?.data?.message || error.message || '请求失败',
+      response: error.response
+    }
+    return Promise.reject(errorWithData)
   }
 )
 
