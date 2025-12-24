@@ -152,7 +152,7 @@ dataset.zip
 
 ```
 yolo-helmet/
-├── web-front/              # 前端项目
+├── web-front/                      # 前端项目（Vue 3 + TypeScript）
 │   ├── src/
 │   │   ├── api/            # API 接口定义
 │   │   │   ├── auth.ts     # 认证接口
@@ -520,9 +520,10 @@ npm run build
 
 3. **数据库**：
    - 默认使用 SQLite 数据库
-   - 数据库文件：`web-backend/instance/yolo_helmet.db`
-   - 首次运行需要执行 `init_db.py` 初始化数据库
    - 数据库文件位于 `instance/` 目录（Flask 约定）
+   - 数据库文件：`web-backend/instance/yolo_helmet.db`（自动创建）
+   - 首次运行需要执行 `init_db.py` 初始化数据库
+   - 初始化时会创建默认管理员账户和通用模型
 
 4. **实时检测**：
    - 需要浏览器支持摄像头访问
@@ -659,6 +660,39 @@ python3 init_db.py
 7. **输入验证**：对所有用户输入进行验证和清理
 8. **JWT 过期时间**：设置合理的 JWT Token 过期时间
 
+## 系统架构
+
+### 前端架构
+
+- **框架**：Vue 3 Composition API + TypeScript
+- **状态管理**：使用 localStorage 存储用户 token 和状态
+- **路由守卫**：基于 Vue Router 的导航守卫实现权限控制
+- **API 通信**：Axios 封装，统一错误处理和请求拦截
+- **UI 组件**：Element Plus 组件库，提供完整的 UI 解决方案
+- **数据可视化**：ECharts 用于统计图表展示
+
+### 后端架构
+
+- **框架**：Flask RESTful API
+- **数据库**：SQLAlchemy ORM + SQLite（可扩展至 PostgreSQL/MySQL）
+- **认证**：JWT Token 认证机制
+- **文件处理**：支持图片、视频上传和处理
+- **模型服务**：基于 Ultralytics YOLO 的检测服务
+- **权限控制**：基于角色的访问控制（RBAC）
+
+### 数据流
+
+1. **检测流程**：
+   - 用户上传图片/视频 → 后端接收文件 → YOLO 模型检测 → 结果标注 → 返回前端展示
+2. **数据存储**：
+   - 检测记录自动保存到数据库
+   - 上传文件临时存储，检测完成后清理
+   - 检测结果视频保存到 `uploads/results/`
+3. **模型管理**：
+   - 支持通用模型（YOLO11n）和自定义训练模型
+   - 模型文件存储在 `models/` 目录
+   - 模型元数据和指标存储在数据库
+
 ## 开发说明
 
 ### 前端开发
@@ -672,7 +706,7 @@ python3 init_db.py
 ### 后端开发
 
 - 使用 Flask 开发模式（`debug=True`）
-- 数据库迁移使用 Flask-Migrate
+- 数据库迁移使用 Flask-Migrate（可选）
 - API 响应格式统一为 JSON
 - 使用 Blueprint 组织路由
 - 使用 JWT 进行身份认证
@@ -761,3 +795,17 @@ curl -X POST http://localhost:5000/api/datasets/$DATASET_ID/upload \
 - ✅ 数据集详情查看功能
 - ✅ 侧边栏折叠/展开功能
 - ✅ 全屏显示优化
+
+## 更新日志
+
+### v1.0.0
+- 初始版本发布
+- 支持图片、视频、实时检测
+- 完整的用户管理和权限控制
+- 模型和数据集管理功能
+- 数据统计分析功能
+
+欢迎提交 Issue 和 Pull Request。在提交 PR 前，请确保：
+1. 代码符合项目规范
+2. 已通过测试
+3. 更新了相关文档
