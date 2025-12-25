@@ -94,7 +94,7 @@
         </el-form-item>
         <el-form-item label="批次大小" prop="batch">
           <el-input-number v-model="newModel.batch" :min="1" :max="64" :step="1" style="width: 100%" />
-          <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：8-32（根据显存调整）</div>
+          <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：4-32（根据显存调整）</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -136,11 +136,8 @@
         </el-form-item>
         <el-form-item label="基础模型" prop="base_model">
           <el-select v-model="editModelForm.base_model" placeholder="选择基础模型" style="width: 100%">
-            <el-option label="YOLO11n (小型模型)" value="yolo11n.pt" />
-            <el-option label="YOLO11s (小型模型)" value="yolo11s.pt" />
-            <el-option label="YOLO11m (中型模型)" value="yolo11m.pt" />
-            <el-option label="YOLO11l (大型模型)" value="yolo11l.pt" />
-            <el-option label="YOLO11x (超大型模型)" value="yolo11x.pt" />
+            <el-option label="yolov8n (小型模型)" value="yolov8n.pt" />
+            <el-option label="yolov11n (小型模型)" value="yolov11n.pt" />
           </el-select>
         </el-form-item>
         <el-form-item label="迭代次数" prop="epochs">
@@ -149,7 +146,7 @@
         </el-form-item>
         <el-form-item label="批次大小" prop="batch">
           <el-input-number v-model="editModelForm.batch" :min="1" :max="64" :step="1" style="width: 100%" />
-          <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：8-32（根据显存调整）</div>
+          <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：4-32（根据显存调整）</div>
         </el-form-item>
       </el-form>
       <template #footer>

@@ -77,11 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { modelApi, type Model, type ModelTrainingData } from '../api/model'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
 
 const route = useRoute()
 const model = ref<Model | null>(null)
@@ -90,6 +91,47 @@ const activeTab = ref('info')
 const lossChartRef = ref<HTMLDivElement | null>(null)
 const metricsChartRef = ref<HTMLDivElement | null>(null)
 
+let lossChart: ECharts | null = null
+let metricsChart: ECharts | null = null
+
+// 检查DOM元素是否有有效的尺寸
+const checkElementSize = (element: HTMLElement | null): boolean => {
+  if (!element) return false
+  const rect = element.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0
+}
+
+// 初始化单个图表
+const initChart = (chartRef: HTMLElement | null, chartInstance: ECharts | null, setOptionFn: (chart: ECharts) => void): ECharts | null => {
+  if (!chartRef) return null
+  
+  // 检查元素尺寸
+  if (!checkElementSize(chartRef)) {
+    // 如果元素没有尺寸，延迟初始化
+    setTimeout(() => {
+      if (checkElementSize(chartRef)) {
+        const chart = echarts.init(chartRef)
+        setOptionFn(chart)
+      }
+    }, 100)
+    return null
+  }
+  
+  // 如果已有实例，先销毁
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  
+  try {
+    const chart = echarts.init(chartRef)
+    setOptionFn(chart)
+    return chart
+  } catch (error) {
+    console.error('Failed to init chart:', error)
+    return null
+  }
+}
+
 const loadModel = async () => {
   const id = parseInt(route.params.id as string)
   try {
@@ -97,7 +139,10 @@ const loadModel = async () => {
     if (model.value.type === 'custom') {
       trainingData.value = await modelApi.getModelTrainingData(id)
       await nextTick()
-      initCharts()
+      // 如果当前在训练数据tab，初始化图表
+      if (activeTab.value === 'training') {
+        initCharts()
+      }
     }
   } catch (error) {
     ElMessage.error('加载模型信息失败')
@@ -108,61 +153,90 @@ const initCharts = () => {
   if (!trainingData.value) return
 
   // Loss chart
-  if (lossChartRef.value) {
-    const lossChart = echarts.init(lossChartRef.value)
-    lossChart.setOption({
-      title: { text: '训练损失曲线' },
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['训练损失', '验证损失'] },
-      xAxis: { type: 'category', data: trainingData.value.epochs.map(e => `Epoch ${e}`) },
-      yAxis: { type: 'value' },
-      series: [
-        {
-          name: '训练损失',
-          type: 'line',
-          data: trainingData.value.train_loss
-        },
-        {
-          name: '验证损失',
-          type: 'line',
-          data: trainingData.value.val_loss
-        }
-      ]
+  if (lossChartRef.value && trainingData.value) {
+    lossChart = initChart(lossChartRef.value, lossChart, (chart) => {
+      chart.setOption({
+        title: { text: '训练损失曲线' },
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['训练损失', '验证损失'] },
+        xAxis: { type: 'category', data: trainingData.value!.epochs.map(e => `Epoch ${e}`) },
+        yAxis: { type: 'value' },
+        series: [
+          {
+            name: '训练损失',
+            type: 'line',
+            data: trainingData.value!.train_loss
+          },
+          {
+            name: '验证损失',
+            type: 'line',
+            data: trainingData.value!.val_loss
+          }
+        ]
+      })
     })
   }
 
   // Metrics chart
-  if (metricsChartRef.value) {
-    const metricsChart = echarts.init(metricsChartRef.value)
-    metricsChart.setOption({
-      title: { text: '性能指标曲线' },
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['mAP', '精确率', '召回率'] },
-      xAxis: { type: 'category', data: trainingData.value.epochs.map(e => `Epoch ${e}`) },
-      yAxis: { type: 'value', max: 1 },
-      series: [
-        {
-          name: 'mAP',
-          type: 'line',
-          data: trainingData.value.map
-        },
-        {
-          name: '精确率',
-          type: 'line',
-          data: trainingData.value.precision
-        },
-        {
-          name: '召回率',
-          type: 'line',
-          data: trainingData.value.recall
-        }
-      ]
+  if (metricsChartRef.value && trainingData.value) {
+    metricsChart = initChart(metricsChartRef.value, metricsChart, (chart) => {
+      chart.setOption({
+        title: { text: '性能指标曲线' },
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['mAP', '精确率', '召回率'] },
+        xAxis: { type: 'category', data: trainingData.value!.epochs.map(e => `Epoch ${e}`) },
+        yAxis: { type: 'value', max: 1 },
+        series: [
+          {
+            name: 'mAP',
+            type: 'line',
+            data: trainingData.value!.map
+          },
+          {
+            name: '精确率',
+            type: 'line',
+            data: trainingData.value!.precision
+          },
+          {
+            name: '召回率',
+            type: 'line',
+            data: trainingData.value!.recall
+          }
+        ]
+      })
     })
   }
 }
 
+// 监听tab切换，当切换到训练数据tab时初始化图表
+watch(activeTab, (newTab) => {
+  if (newTab === 'training' && trainingData.value) {
+    // 使用 nextTick 和 setTimeout 确保 tab 内容已渲染
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          initCharts()
+        }, 100)
+      })
+    })
+  }
+})
+
+// 窗口大小变化时调整图表
+const handleResize = () => {
+  if (lossChart) lossChart.resize()
+  if (metricsChart) metricsChart.resize()
+}
+
 onMounted(() => {
   loadModel()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  if (lossChart) lossChart.dispose()
+  if (metricsChart) metricsChart.dispose()
 })
 </script>
 

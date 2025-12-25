@@ -44,9 +44,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { statisticsApi } from '../api/statistics'
 import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
 
 const statistics = ref({
   total_detections: 0,
@@ -59,6 +60,10 @@ const statistics = ref({
 const trendChartRef = ref<HTMLDivElement | null>(null)
 const distributionChartRef = ref<HTMLDivElement | null>(null)
 const dailyChartRef = ref<HTMLDivElement | null>(null)
+
+let trendChart: ECharts | null = null
+let distributionChart: ECharts | null = null
+let dailyChart: ECharts | null = null
 
 const statCards = computed(() => [
   {
@@ -79,12 +84,55 @@ const statCards = computed(() => [
   }
 ])
 
+// 检查DOM元素是否有有效的尺寸
+const checkElementSize = (element: HTMLElement | null): boolean => {
+  if (!element) return false
+  const rect = element.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0
+}
+
+// 初始化单个图表
+const initChart = (chartRef: HTMLElement | null, chartInstance: ECharts | null, setOptionFn: (chart: ECharts) => void): ECharts | null => {
+  if (!chartRef) return null
+  
+  // 检查元素尺寸
+  if (!checkElementSize(chartRef)) {
+    // 如果元素没有尺寸，延迟初始化
+    setTimeout(() => {
+      if (checkElementSize(chartRef)) {
+        const chart = echarts.init(chartRef)
+        setOptionFn(chart)
+      }
+    }, 100)
+    return null
+  }
+  
+  // 如果已有实例，先销毁
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  
+  try {
+    const chart = echarts.init(chartRef)
+    setOptionFn(chart)
+    return chart
+  } catch (error) {
+    console.error('Failed to init chart:', error)
+    return null
+  }
+}
+
 const loadStatistics = async () => {
   try {
     const stats = await statisticsApi.getStatistics()
     statistics.value = stats
     await nextTick()
-    initCharts()
+    // 使用 requestAnimationFrame 确保 DOM 完全渲染
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        initCharts()
+      }, 50)
+    })
   } catch (error) {
     console.error('Failed to load statistics:', error)
   }
@@ -93,73 +141,91 @@ const loadStatistics = async () => {
 const initCharts = () => {
   // Trend chart
   if (trendChartRef.value) {
-    const trendChart = echarts.init(trendChartRef.value)
     const dates = statistics.value.daily_stats.map(s => s.date)
     const counts = statistics.value.daily_stats.map(s => s.count)
     
-    trendChart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: dates },
-      yAxis: { type: 'value' },
-      series: [{
-        data: counts,
-        type: 'line',
-        smooth: true,
-        areaStyle: {}
-      }]
+    trendChart = initChart(trendChartRef.value, trendChart, (chart) => {
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: dates },
+        yAxis: { type: 'value' },
+        series: [{
+          data: counts,
+          type: 'line',
+          smooth: true,
+          areaStyle: {}
+        }]
+      })
     })
   }
 
   // Distribution chart
   if (distributionChartRef.value) {
-    const distributionChart = echarts.init(distributionChartRef.value)
-    distributionChart.setOption({
-      tooltip: { trigger: 'item' },
-      series: [{
-        type: 'pie',
-        radius: '60%',
-        data: [
-          { value: statistics.value.with_helmet, name: '佩戴安全帽' },
-          { value: statistics.value.without_helmet, name: '未佩戴安全帽' }
-        ],
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: 'rgba(0, 0, 0, 0.5)'
+    distributionChart = initChart(distributionChartRef.value, distributionChart, (chart) => {
+      chart.setOption({
+        tooltip: { trigger: 'item' },
+        series: [{
+          type: 'pie',
+          radius: '60%',
+          data: [
+            { value: statistics.value.with_helmet, name: '佩戴安全帽' },
+            { value: statistics.value.without_helmet, name: '未佩戴安全帽' }
+          ],
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
           }
-        }
-      }]
+        }]
+      })
     })
   }
 
   // Daily chart
   if (dailyChartRef.value) {
-    const dailyChart = echarts.init(dailyChartRef.value)
     const dates = statistics.value.daily_stats.map(s => s.date)
     const counts = statistics.value.daily_stats.map(s => s.count)
     
-    dailyChart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: dates },
-      yAxis: { type: 'value' },
-      series: [{
-        data: counts,
-        type: 'bar',
-        itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#83bff6' },
-            { offset: 0.5, color: '#188df0' },
-            { offset: 1, color: '#188df0' }
-          ])
-        }
-      }]
+    dailyChart = initChart(dailyChartRef.value, dailyChart, (chart) => {
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: dates },
+        yAxis: { type: 'value' },
+        series: [{
+          data: counts,
+          type: 'bar',
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#83bff6' },
+              { offset: 0.5, color: '#188df0' },
+              { offset: 1, color: '#188df0' }
+            ])
+          }
+        }]
+      })
     })
   }
 }
 
+// 窗口大小变化时调整图表
+const handleResize = () => {
+  if (trendChart) trendChart.resize()
+  if (distributionChart) distributionChart.resize()
+  if (dailyChart) dailyChart.resize()
+}
+
 onMounted(() => {
   loadStatistics()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  if (trendChart) trendChart.dispose()
+  if (distributionChart) distributionChart.dispose()
+  if (dailyChart) dailyChart.dispose()
 })
 </script>
 
