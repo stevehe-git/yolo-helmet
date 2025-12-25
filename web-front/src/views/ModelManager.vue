@@ -88,13 +88,24 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="viewModelInfo(row.id)">
               查看
             </el-button>
             <el-button type="primary" link @click="editModel(row)">
               编辑
+            </el-button>
+            <!-- 训练按钮：只要不是completed和published状态，就显示 -->
+            <el-button
+              v-if="row.status !== 'completed' && row.status !== 'published' && row.type === 'custom'"
+              type="success"
+              link
+              @click="handleTrain(row)"
+              :disabled="row.status === 'training'"
+            >
+              <el-icon><VideoPlay /></el-icon>
+              {{ row.status === 'training' ? '训练中...' : '训练' }}
             </el-button>
             <el-button
               v-if="row.status === 'published'"
@@ -239,7 +250,7 @@ import { modelApi, type Model } from '../api/model'
 import { datasetApi, type Dataset } from '../api/dataset'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, VideoPlay } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const models = ref<Model[]>([])
@@ -470,6 +481,40 @@ const handleUpdateModel = async () => {
       }
     }
   })
+}
+
+const handleTrain = async (model: Model) => {
+  // 检查是否有训练参数
+  if (!model.training_params || !model.training_params.dataset_id) {
+    ElMessage.error('模型未配置训练参数，请先编辑模型设置训练参数')
+    return
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要开始训练模型"${model.name}"吗？`,
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+    
+    await modelApi.trainModel({
+      model_id: model.id
+    })
+    
+    ElMessage.success('训练任务已启动，请稍后查看训练结果')
+    loadModels()
+    
+    // 启动轮询检查训练状态
+    startTrainingStatusPolling(model.id)
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.message || error.message || '训练启动失败')
+    }
+  }
 }
 
 const handlePublish = async (id: number) => {
