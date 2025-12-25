@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 import zipfile
 import shutil
+import tempfile
 
 datasets_bp = Blueprint('datasets', __name__)
 
@@ -42,6 +43,33 @@ def create_dataset():
     dataset_dir.mkdir(parents=True, exist_ok=True)
     
     return jsonify(dataset.to_dict()), 201
+
+@datasets_bp.route('/<int:dataset_id>', methods=['PUT'])
+@admin_required
+def update_dataset(dataset_id):
+    dataset = Dataset.query.get_or_404(dataset_id)
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'message': '请求数据不能为空'}), 400
+    
+    # 更新名称
+    if 'name' in data:
+        name = data.get('name', '').strip()
+        if not name:
+            return jsonify({'message': '数据集名称不能为空'}), 400
+        # 检查名称是否已被其他数据集使用
+        existing = Dataset.query.filter(Dataset.name == name, Dataset.id != dataset_id).first()
+        if existing:
+            return jsonify({'message': '数据集名称已存在'}), 400
+        dataset.name = name
+    
+    # 更新描述
+    if 'description' in data:
+        dataset.description = data.get('description', '').strip() or None
+    
+    db.session.commit()
+    return jsonify(dataset.to_dict()), 200
 
 @datasets_bp.route('/<int:dataset_id>', methods=['DELETE'])
 @admin_required
@@ -178,13 +206,22 @@ def upload_dataset(dataset_id):
     dataset_dir = Config.UPLOAD_FOLDER / 'datasets' / str(dataset_id)
     dataset_dir.mkdir(parents=True, exist_ok=True)
     
+    # 使用临时目录保存ZIP文件，避免触发Flask reloader
+    temp_dir = Path(tempfile.gettempdir())
+    temp_zip_path = temp_dir / f'dataset_{dataset_id}_{filename}'
+    
     try:
-        # 保存ZIP文件
-        zip_path = dataset_dir / filename
-        zip_file.save(zip_path)
+        # 先保存到临时目录
+        zip_file.save(str(temp_zip_path))
         
         # 计算ZIP文件大小
-        file_size = os.path.getsize(zip_path)
+        file_size = os.path.getsize(temp_zip_path)
+        
+        # 移动到最终位置（原子操作，减少触发reloader的机会）
+        zip_path = dataset_dir / filename
+        if zip_path.exists():
+            zip_path.unlink()
+        shutil.move(str(temp_zip_path), str(zip_path))
         
         # 解压ZIP文件
         extract_dir = dataset_dir / 'extracted'
@@ -263,8 +300,14 @@ def upload_dataset(dataset_id):
         }), 200
         
     except zipfile.BadZipFile:
+        # 清理临时文件
+        if temp_zip_path.exists():
+            temp_zip_path.unlink()
         return jsonify({'message': 'ZIP文件格式错误或已损坏'}), 400
     except Exception as e:
         db.session.rollback()
+        # 清理临时文件
+        if temp_zip_path.exists():
+            temp_zip_path.unlink()
         return jsonify({'message': f'处理ZIP文件失败: {str(e)}'}), 500
 

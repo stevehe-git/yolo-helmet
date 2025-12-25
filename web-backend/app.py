@@ -24,5 +24,7 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Use 'stat' reloader instead of 'watchdog' to avoid monitoring uploads directory
+    # This prevents ERR_UPLOAD_FILE_CHANGED errors during file uploads
+    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=True, reloader_type='stat')
 
