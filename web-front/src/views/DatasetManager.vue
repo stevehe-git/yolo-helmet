@@ -58,7 +58,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="300" show-overflow-tooltip />
-        <el-table-column label="数据集统计" width="250" align="center">
+        <el-table-column label="数据集统计" width="150" align="left">
           <template #default="{ row }">
             <div v-if="row.train_count || row.val_count || row.test_count" style="text-align: left; font-size: 12px;">
               <div>训练: {{ row.train_count || 0 }}张</div>

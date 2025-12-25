@@ -166,14 +166,17 @@ const loadModel = async () => {
   try {
     model.value = await modelApi.getModel(id)
     
-    // 检查模型文件是否存在
-    if (model.value && (model.value as any).file_exists === false) {
-      ElMessage.warning('模型文件不存在，无法显示训练数据')
-      trainingData.value = null
-      return
-    }
-    
+    // 对于自定义模型，尝试加载训练数据
+    // 只有在模型文件明确不存在时才不加载训练数据
+    // 如果file_exists为undefined或true，都尝试加载
     if (model.value.type === 'custom' && model.value.status === 'completed') {
+      // 只有当file_exists明确为false时才跳过
+      if (model.value && (model.value as any).file_exists === false) {
+        ElMessage.warning('模型文件不存在，无法显示训练数据')
+        trainingData.value = null
+        return
+      }
+      
       try {
         const data = await modelApi.getModelTrainingData(id)
         // 检查是否有错误或数据为空

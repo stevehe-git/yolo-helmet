@@ -528,17 +528,12 @@ def train_model():
 def get_model_training_data(model_id):
     model = Model.query.get_or_404(model_id)
     
-    # 检查模型文件是否存在
+    print(f"Getting training data for model {model_id}: path={model.path}, status={model.status}")
+    
+    # 检查模型文件是否存在（但即使不存在也尝试读取训练数据，因为训练数据可能在runs目录中）
     if not model.path or not Path(model.path).exists():
-        return jsonify({
-            'error': '模型文件不存在，无法获取训练数据',
-            'epochs': [],
-            'train_loss': [],
-            'val_loss': [],
-            'map': [],
-            'precision': [],
-            'recall': []
-        }), 404
+        print(f"Warning: Model file does not exist: {model.path}, but will try to read training data from runs directory")
+        # 不直接返回404，继续尝试读取训练数据
     
     # 尝试从runs目录读取训练数据
     training_data = {
@@ -555,15 +550,20 @@ def get_model_training_data(model_id):
         runs_dir = Config.MODELS_FOLDER / 'runs' / f'model_{model_id}'
         results_csv = None
         
-        # 尝试找到results.csv文件
-        if runs_dir.exists():
-            # 查找最新的训练结果目录
-            train_dirs = sorted([d for d in runs_dir.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
-            for train_dir in train_dirs:
-                csv_path = train_dir / 'results.csv'
-                if csv_path.exists():
-                    results_csv = csv_path
-                    break
+        # 首先尝试直接在runs_dir下查找results.csv（YOLO可能直接保存在这里）
+        direct_csv = runs_dir / 'results.csv'
+        if direct_csv.exists():
+            results_csv = direct_csv
+        else:
+            # 如果直接路径不存在，尝试在子目录中查找
+            if runs_dir.exists():
+                # 查找最新的训练结果目录
+                train_dirs = sorted([d for d in runs_dir.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
+                for train_dir in train_dirs:
+                    csv_path = train_dir / 'results.csv'
+                    if csv_path.exists():
+                        results_csv = csv_path
+                        break
         
         if results_csv and results_csv.exists():
             # 从CSV文件读取训练数据
@@ -572,35 +572,86 @@ def get_model_training_data(model_id):
                 reader = csv.DictReader(f)
                 rows = list(reader)
                 
+                if not rows:
+                    print(f"Warning: CSV file {results_csv} is empty")
+                    return jsonify({
+                        'error': '训练数据文件为空',
+                        'epochs': [],
+                        'train_loss': [],
+                        'val_loss': [],
+                        'map': [],
+                        'precision': [],
+                        'recall': []
+                    }), 404
+                
+                # 获取所有列名（可能包含空格），创建去除空格后的映射
+                fieldnames = reader.fieldnames or []
+                # 创建列名映射：去除空格后的列名 -> 原始列名
+                fieldname_map = {}
+                for name in fieldnames:
+                    stripped = name.strip()
+                    fieldname_map[stripped] = name
+                
+                def get_value(row, possible_keys):
+                    """从row中获取值，尝试多个可能的键名（考虑空格）"""
+                    for key in possible_keys:
+                        # 先尝试原始键名
+                        if key in row and row[key]:
+                            try:
+                                value = row[key].strip()
+                                if value:
+                                    return float(value)
+                            except (ValueError, AttributeError):
+                                pass
+                        # 再尝试去除空格后的键名
+                        stripped_key = key.strip()
+                        if stripped_key in fieldname_map:
+                            original_key = fieldname_map[stripped_key]
+                            if original_key in row and row[original_key]:
+                                try:
+                                    value = row[original_key].strip()
+                                    if value:
+                                        return float(value)
+                                except (ValueError, AttributeError):
+                                    pass
+                        # 最后尝试在所有键中查找包含该键名的（处理前导空格）
+                        for original_key in row.keys():
+                            if original_key.strip() == stripped_key:
+                                try:
+                                    value = row[original_key].strip()
+                                    if value:
+                                        return float(value)
+                                except (ValueError, AttributeError):
+                                    pass
+                    return 0.0
+                
                 for i, row in enumerate(rows, start=1):
                     training_data['epochs'].append(i)
                     
-                    # 读取损失值（尝试多个可能的列名）
-                    train_loss = 0.0
-                    val_loss = 0.0
+                    # 读取损失值（计算总损失 = box_loss + cls_loss + dfl_loss）
+                    train_box_loss = get_value(row, ['train/box_loss'])
+                    train_cls_loss = get_value(row, ['train/cls_loss'])
+                    train_dfl_loss = get_value(row, ['train/dfl_loss'])
+                    train_loss = train_box_loss + train_cls_loss + train_dfl_loss
                     
-                    # 尝试不同的损失列名
-                    for key in ['train/box_loss', 'train/cls_loss', 'train/dfl_loss', 'train/loss']:
-                        if key in row:
-                            train_loss = float(row[key])
-                            break
-                    
-                    for key in ['val/box_loss', 'val/cls_loss', 'val/dfl_loss', 'val/loss']:
-                        if key in row:
-                            val_loss = float(row[key])
-                            break
+                    val_box_loss = get_value(row, ['val/box_loss'])
+                    val_cls_loss = get_value(row, ['val/cls_loss'])
+                    val_dfl_loss = get_value(row, ['val/dfl_loss'])
+                    val_loss = val_box_loss + val_cls_loss + val_dfl_loss
                     
                     training_data['train_loss'].append(train_loss)
                     training_data['val_loss'].append(val_loss)
                     
                     # 读取指标
-                    map_key = 'metrics/mAP50(B)' if 'metrics/mAP50(B)' in row else 'metrics/mAP50'
-                    precision_key = 'metrics/precision(B)' if 'metrics/precision(B)' in row else 'metrics/precision'
-                    recall_key = 'metrics/recall(B)' if 'metrics/recall(B)' in row else 'metrics/recall'
+                    map_value = get_value(row, ['metrics/mAP50(B)', 'metrics/mAP50'])
+                    precision_value = get_value(row, ['metrics/precision(B)', 'metrics/precision'])
+                    recall_value = get_value(row, ['metrics/recall(B)', 'metrics/recall'])
                     
-                    training_data['map'].append(float(row.get(map_key, 0)))
-                    training_data['precision'].append(float(row.get(precision_key, 0)))
-                    training_data['recall'].append(float(row.get(recall_key, 0)))
+                    training_data['map'].append(map_value)
+                    training_data['precision'].append(precision_value)
+                    training_data['recall'].append(recall_value)
+                
+                print(f"Successfully read {len(training_data['epochs'])} epochs from {results_csv}")
         else:
             # 如果找不到训练数据文件，返回空数据
             return jsonify({
@@ -627,8 +678,9 @@ def get_model_training_data(model_id):
             'recall': []
         }), 500
     
-    # 如果没有数据，返回404
+    # 如果没有数据，返回空数据（但不返回404，让前端处理）
     if not training_data['epochs']:
+        print(f"Warning: No training data found for model {model_id}")
         return jsonify({
             'error': '训练数据为空',
             'epochs': [],
@@ -637,8 +689,9 @@ def get_model_training_data(model_id):
             'map': [],
             'precision': [],
             'recall': []
-        }), 404
+        }), 200  # 改为200，让前端判断是否有数据
     
+    print(f"Returning training data for model {model_id}: {len(training_data['epochs'])} epochs")
     return jsonify(training_data), 200
 
 @models_bp.route('/<int:model_id>/metrics', methods=['GET'])

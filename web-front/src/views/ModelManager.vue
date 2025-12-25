@@ -560,12 +560,14 @@ const startTrainingStatusPolling = (modelId: number) => {
     clearInterval(trainingPollingIntervals.get(modelId))
   }
   
-  // 开始轮询，每5秒检查一次
+  // 开始轮询，每3秒检查一次（更频繁的检查以确保及时刷新）
   const interval = window.setInterval(async () => {
     try {
-      const response: any = await modelApi.getModels()
-      const updatedModels: Model[] = Array.isArray(response) ? response : response.data || []
-      const model = updatedModels.find((m: Model) => m.id === modelId)
+      // 直接刷新模型列表，确保数据是最新的
+      await loadModels()
+      
+      // 从当前模型列表中查找对应的模型
+      const model = models.value.find((m: Model) => m.id === modelId)
       
       if (model) {
         // 检查是否有错误
@@ -577,26 +579,44 @@ const startTrainingStatusPolling = (modelId: number) => {
           })
           clearInterval(interval)
           trainingPollingIntervals.delete(modelId)
-          loadModels()
           return
         }
         
-        // 检查是否训练完成（有指标且没有错误）
-        if (model.status === 'completed' && model.metrics && model.metrics.map !== undefined && !isNaN(model.metrics.map) && !(model.metrics as any).error) {
-          ElMessage.success({
-            message: `模型"${model.name}"训练完成！mAP: ${(model.metrics.map * 100).toFixed(2)}%`,
-            duration: 5000
-          })
+        // 检查是否训练完成（状态为completed）
+        if (model.status === 'completed') {
+          // 如果有指标，显示成功消息
+          if (model.metrics && model.metrics.map !== undefined && !isNaN(model.metrics.map) && !(model.metrics as any).error) {
+            ElMessage.success({
+              message: `模型"${model.name}"训练完成！mAP: ${(model.metrics.map * 100).toFixed(2)}%`,
+              duration: 5000
+            })
+          } else {
+            // 即使没有指标，只要状态是completed，也停止轮询并提示
+            ElMessage.success({
+              message: `模型"${model.name}"训练完成！`,
+              duration: 5000
+            })
+          }
           clearInterval(interval)
           trainingPollingIntervals.delete(modelId)
-          loadModels()
           return
         }
+        
+        // 如果状态变为failed，也停止轮询
+        if (model.status === 'failed') {
+          clearInterval(interval)
+          trainingPollingIntervals.delete(modelId)
+          return
+        }
+      } else {
+        // 如果找不到模型，可能是被删除了，停止轮询
+        clearInterval(interval)
+        trainingPollingIntervals.delete(modelId)
       }
     } catch (error) {
       console.error('Error polling training status:', error)
     }
-  }, 5000)
+  }, 3000) // 改为3秒轮询一次，更及时
   
   trainingPollingIntervals.set(modelId, interval)
   
