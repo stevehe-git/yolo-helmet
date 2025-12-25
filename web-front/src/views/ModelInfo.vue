@@ -78,21 +78,27 @@
         </el-tab-pane>
 
         <el-tab-pane label="训练数据" name="training">
-          <div v-if="trainingData" class="training-charts">
+          <div v-if="trainingData && trainingData.epochs && trainingData.epochs.length > 0" class="training-charts">
             <el-card style="margin-bottom: 20px">
               <template #header>
                 <span>损失曲线</span>
               </template>
-              <div ref="lossChartRef" style="height: 300px"></div>
+              <div style="padding: 10px 0;">
+                <div style="font-size: 14px; color: #909399; margin-bottom: 10px;">训练损失曲线</div>
+                <div ref="lossChartRef" style="height: 300px"></div>
+              </div>
             </el-card>
             <el-card>
               <template #header>
                 <span>性能指标曲线</span>
               </template>
-              <div ref="metricsChartRef" style="height: 300px"></div>
+              <div style="padding: 10px 0;">
+                <div style="font-size: 14px; color: #909399; margin-bottom: 10px;">性能指标曲线</div>
+                <div ref="metricsChartRef" style="height: 300px"></div>
+              </div>
             </el-card>
           </div>
-          <el-empty v-else description="暂无训练数据" />
+          <el-empty v-else description="暂无训练数据（模型文件或训练数据文件不存在）" />
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -159,13 +165,39 @@ const loadModel = async () => {
   const id = parseInt(route.params.id as string)
   try {
     model.value = await modelApi.getModel(id)
-    if (model.value.type === 'custom') {
-      trainingData.value = await modelApi.getModelTrainingData(id)
-      await nextTick()
-      // 如果当前在训练数据tab，初始化图表
-      if (activeTab.value === 'training') {
-        initCharts()
+    
+    // 检查模型文件是否存在
+    if (model.value && (model.value as any).file_exists === false) {
+      ElMessage.warning('模型文件不存在，无法显示训练数据')
+      trainingData.value = null
+      return
+    }
+    
+    if (model.value.type === 'custom' && model.value.status === 'completed') {
+      try {
+        const data = await modelApi.getModelTrainingData(id)
+        // 检查是否有错误或数据为空
+        if (data && !(data as any).error && data.epochs && data.epochs.length > 0) {
+          trainingData.value = data
+          await nextTick()
+          // 如果当前在训练数据tab，初始化图表
+          if (activeTab.value === 'training') {
+            initCharts()
+          }
+        } else {
+          trainingData.value = null
+        }
+      } catch (error: any) {
+        // 如果返回404或错误，不显示训练数据
+        if (error.response?.status === 404) {
+          trainingData.value = null
+        } else {
+          console.error('Failed to load training data:', error)
+          trainingData.value = null
+        }
       }
+    } else {
+      trainingData.value = null
     }
   } catch (error) {
     ElMessage.error('加载模型信息失败')

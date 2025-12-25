@@ -69,6 +69,17 @@ class Model(db.Model):
             if dataset:
                 dataset_name = dataset.name
         
+        # 检查模型文件是否存在
+        from pathlib import Path
+        file_exists = False
+        if self.path:
+            file_exists = Path(self.path).exists()
+            # 如果文件不存在且状态是completed或published，更新状态
+            if not file_exists and self.status in ['completed', 'published']:
+                # 注意：这里不直接修改数据库，只标记在返回数据中
+                # 实际的数据库更新应该在API层面处理
+                pass
+        
         return {
             'id': self.id,
             'name': self.name,
@@ -79,6 +90,7 @@ class Model(db.Model):
             'training_params': training_params,
             'dataset_name': dataset_name,  # 添加数据集名称
             'status': self.status,
+            'file_exists': file_exists,  # 添加文件存在性标记
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

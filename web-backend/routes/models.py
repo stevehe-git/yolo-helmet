@@ -33,12 +33,77 @@ def get_models():
         query = query.filter(Model.status == status_filter)
     
     models = query.all()
+    
+    # 同步检查：验证模型文件是否存在，如果不存在则更新状态
+    for model in models:
+        if model.path:
+            model_path = Path(model.path)
+            if not model_path.exists():
+                # 如果模型文件不存在，且状态是completed或published，更新为failed
+                if model.status in ['completed', 'published']:
+                    model.status = 'failed'
+                    current_metrics = model.get_metrics()
+                    if not current_metrics or not current_metrics.get('error'):
+                        error_msg = '模型文件不存在，可能已被删除'
+                        if current_metrics:
+                            current_metrics['error'] = error_msg
+                            model.set_metrics(current_metrics)
+                        else:
+                            model.set_metrics({'error': error_msg})
+                    db.session.commit()
+                    print(f"Synced model {model.id} ({model.name}): file missing, status updated to failed")
+        else:
+            # 如果模型没有路径，且状态是completed或published，也标记为failed
+            if model.status in ['completed', 'published']:
+                model.status = 'failed'
+                current_metrics = model.get_metrics()
+                if not current_metrics or not current_metrics.get('error'):
+                    error_msg = '模型路径未设置'
+                    if current_metrics:
+                        current_metrics['error'] = error_msg
+                        model.set_metrics(current_metrics)
+                    else:
+                        model.set_metrics({'error': error_msg})
+                db.session.commit()
+                print(f"Synced model {model.id} ({model.name}): no path, status updated to failed")
+    
     return jsonify([m.to_dict() for m in models]), 200
 
 @models_bp.route('/<int:model_id>', methods=['GET'])
 @login_required
 def get_model(model_id):
     model = Model.query.get_or_404(model_id)
+    
+    # 同步检查：验证模型文件是否存在
+    if model.path:
+        model_path = Path(model.path)
+        if not model_path.exists():
+            # 如果模型文件不存在，且状态是completed或published，更新为failed
+            if model.status in ['completed', 'published']:
+                model.status = 'failed'
+                current_metrics = model.get_metrics()
+                if not current_metrics or not current_metrics.get('error'):
+                    error_msg = '模型文件不存在，可能已被删除'
+                    if current_metrics:
+                        current_metrics['error'] = error_msg
+                        model.set_metrics(current_metrics)
+                    else:
+                        model.set_metrics({'error': error_msg})
+                db.session.commit()
+    else:
+        # 如果模型没有路径，且状态是completed或published，也标记为failed
+        if model.status in ['completed', 'published']:
+            model.status = 'failed'
+            current_metrics = model.get_metrics()
+            if not current_metrics or not current_metrics.get('error'):
+                error_msg = '模型路径未设置'
+                if current_metrics:
+                    current_metrics['error'] = error_msg
+                    model.set_metrics(current_metrics)
+                else:
+                    model.set_metrics({'error': error_msg})
+            db.session.commit()
+    
     return jsonify(model.to_dict()), 200
 
 @models_bp.route('', methods=['POST'])
@@ -142,10 +207,41 @@ def unpublish_model(model_id):
     if model.status != 'published':
         return jsonify({'message': '模型未发布'}), 400
     
+    # 检查模型文件是否存在
+    if model.path and not Path(model.path).exists():
+        return jsonify({'message': '模型文件不存在，无法取消发布'}), 400
+    
     model.status = 'completed'
     db.session.commit()
     
     return jsonify({'message': '取消发布成功', 'model': model.to_dict()}), 200
+
+@models_bp.route('/sync', methods=['POST'])
+@admin_required
+def sync_models():
+    """同步模型文件状态，检查所有模型文件是否存在"""
+    models = Model.query.all()
+    synced_count = 0
+    
+    for model in models:
+        if model.path:
+            model_path = Path(model.path)
+            if not model_path.exists():
+                # 如果模型文件不存在，且状态是completed或published，更新为failed
+                if model.status in ['completed', 'published']:
+                    old_status = model.status
+                    model.status = 'failed'
+                    if not model.get_metrics() or not model.get_metrics().get('error'):
+                        error_msg = '模型文件不存在，可能已被删除'
+                        model.set_metrics({'error': error_msg})
+                    db.session.commit()
+                    synced_count += 1
+                    print(f"Synced model {model.id} ({model.name}): {old_status} -> failed (file missing)")
+    
+    return jsonify({
+        'message': f'同步完成，已更新 {synced_count} 个模型的状态',
+        'synced_count': synced_count
+    }), 200
 
 def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name=None):
     """异步训练模型"""
@@ -218,13 +314,42 @@ def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_mode
                 best_model_path = Path(results.save_dir) / 'weights' / 'last.pt'
             
             # 复制最佳模型到模型目录
+            model_file_saved = False
             if best_model_path.exists():
                 target_path = Config.MODELS_FOLDER / f"{model.name}.pt"
                 import shutil
-                shutil.copy2(str(best_model_path), str(target_path))
-                model.path = str(target_path)
+                try:
+                    # 确保目标目录存在
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(best_model_path), str(target_path))
+                    # 验证文件是否成功复制
+                    if target_path.exists():
+                        model.path = str(target_path.absolute())  # 使用绝对路径
+                        model_file_saved = True
+                        print(f"Model saved to: {target_path.absolute()}")
+                    else:
+                        print(f"Error: Model file copy failed, target file does not exist")
+                except Exception as copy_error:
+                    print(f"Error copying model file: {str(copy_error)}")
+            else:
+                print(f"Warning: Best model file not found at {best_model_path}")
+                model.set_metrics({'error': '训练完成但模型文件未找到'})
+                model.status = 'failed'
+                db.session.commit()
+                print(f"Training failed for model {model_id}: model file not found")
+                return  # 如果模型文件不存在，直接返回，不保存指标
             
-            # 提取训练指标
+            # 验证模型文件是否成功保存
+            if not model_file_saved or not Path(model.path).exists():
+                error_msg = '模型文件保存失败' if not model_file_saved else '模型文件验证失败'
+                print(f"Error: {error_msg} - {model.path}")
+                model.set_metrics({'error': error_msg})
+                model.status = 'failed'
+                db.session.commit()
+                print(f"Training failed for model {model_id}: {error_msg}")
+                return
+            
+            # 提取训练指标（只有在模型文件成功保存后才提取）
             metrics = {
                 'map': 0.0,
                 'map50_95': 0.0,
@@ -280,13 +405,22 @@ def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_mode
             if metrics['precision'] > 0 and metrics['recall'] > 0:
                 metrics['f1'] = 2 * (metrics['precision'] * metrics['recall']) / (metrics['precision'] + metrics['recall'])
             
-            # 保存指标到模型
+            # 再次验证模型文件是否存在（防止在提取指标过程中文件被删除）
+            if not model.path or not Path(model.path).exists():
+                error_msg = '模型文件在训练完成后被删除' if model.path else '模型路径未设置'
+                model.set_metrics({'error': error_msg})
+                model.status = 'failed'
+                db.session.commit()
+                print(f"Training failed for model {model_id}: {error_msg}")
+                return
+            
+            # 保存指标到模型（只有在模型文件存在时才保存）
             model.set_metrics(metrics)
             # 更新模型状态为训练完成
             model.status = 'completed'
             db.session.commit()
             
-            print(f"Training completed for model {model_id}")
+            print(f"Training completed for model {model_id}, model file: {model.path}")
         except Exception as e:
             print(f"Training error: {str(e)}")
             import traceback
@@ -394,15 +528,116 @@ def train_model():
 def get_model_training_data(model_id):
     model = Model.query.get_or_404(model_id)
     
-    # Return mock training data
+    # 检查模型文件是否存在
+    if not model.path or not Path(model.path).exists():
+        return jsonify({
+            'error': '模型文件不存在，无法获取训练数据',
+            'epochs': [],
+            'train_loss': [],
+            'val_loss': [],
+            'map': [],
+            'precision': [],
+            'recall': []
+        }), 404
+    
+    # 尝试从runs目录读取训练数据
     training_data = {
-        'epochs': list(range(1, 101)),
-        'train_loss': [0.5 - i * 0.004 for i in range(100)],
-        'val_loss': [0.6 - i * 0.003 for i in range(100)],
-        'map': [0.3 + i * 0.006 for i in range(100)],
-        'precision': [0.4 + i * 0.005 for i in range(100)],
-        'recall': [0.35 + i * 0.0055 for i in range(100)]
+        'epochs': [],
+        'train_loss': [],
+        'val_loss': [],
+        'map': [],
+        'precision': [],
+        'recall': []
     }
+    
+    try:
+        # 查找runs目录中的训练结果
+        runs_dir = Config.MODELS_FOLDER / 'runs' / f'model_{model_id}'
+        results_csv = None
+        
+        # 尝试找到results.csv文件
+        if runs_dir.exists():
+            # 查找最新的训练结果目录
+            train_dirs = sorted([d for d in runs_dir.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
+            for train_dir in train_dirs:
+                csv_path = train_dir / 'results.csv'
+                if csv_path.exists():
+                    results_csv = csv_path
+                    break
+        
+        if results_csv and results_csv.exists():
+            # 从CSV文件读取训练数据
+            import csv
+            with open(results_csv, 'r') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                
+                for i, row in enumerate(rows, start=1):
+                    training_data['epochs'].append(i)
+                    
+                    # 读取损失值（尝试多个可能的列名）
+                    train_loss = 0.0
+                    val_loss = 0.0
+                    
+                    # 尝试不同的损失列名
+                    for key in ['train/box_loss', 'train/cls_loss', 'train/dfl_loss', 'train/loss']:
+                        if key in row:
+                            train_loss = float(row[key])
+                            break
+                    
+                    for key in ['val/box_loss', 'val/cls_loss', 'val/dfl_loss', 'val/loss']:
+                        if key in row:
+                            val_loss = float(row[key])
+                            break
+                    
+                    training_data['train_loss'].append(train_loss)
+                    training_data['val_loss'].append(val_loss)
+                    
+                    # 读取指标
+                    map_key = 'metrics/mAP50(B)' if 'metrics/mAP50(B)' in row else 'metrics/mAP50'
+                    precision_key = 'metrics/precision(B)' if 'metrics/precision(B)' in row else 'metrics/precision'
+                    recall_key = 'metrics/recall(B)' if 'metrics/recall(B)' in row else 'metrics/recall'
+                    
+                    training_data['map'].append(float(row.get(map_key, 0)))
+                    training_data['precision'].append(float(row.get(precision_key, 0)))
+                    training_data['recall'].append(float(row.get(recall_key, 0)))
+        else:
+            # 如果找不到训练数据文件，返回空数据
+            return jsonify({
+                'error': '训练数据文件不存在，可能runs目录已被删除',
+                'epochs': [],
+                'train_loss': [],
+                'val_loss': [],
+                'map': [],
+                'precision': [],
+                'recall': []
+            }), 404
+            
+    except Exception as e:
+        print(f"Error reading training data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': f'读取训练数据失败: {str(e)}',
+            'epochs': [],
+            'train_loss': [],
+            'val_loss': [],
+            'map': [],
+            'precision': [],
+            'recall': []
+        }), 500
+    
+    # 如果没有数据，返回404
+    if not training_data['epochs']:
+        return jsonify({
+            'error': '训练数据为空',
+            'epochs': [],
+            'train_loss': [],
+            'val_loss': [],
+            'map': [],
+            'precision': [],
+            'recall': []
+        }), 404
     
     return jsonify(training_data), 200
 
