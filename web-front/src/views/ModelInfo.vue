@@ -23,33 +23,56 @@
         </el-tab-pane>
 
         <el-tab-pane label="性能指标" name="metrics">
-          <el-card v-if="model?.metrics">
+          <el-card v-if="model?.metrics && !model.metrics.error">
             <el-row :gutter="20">
               <el-col :span="6">
                 <div class="metric-card">
-                  <div class="metric-value">{{ (model.metrics.map * 100).toFixed(2) }}%</div>
+                  <div class="metric-value">
+                    {{ model.metrics.map !== undefined && !isNaN(model.metrics.map) 
+                      ? (model.metrics.map * 100).toFixed(2) + '%' 
+                      : '-' }}
+                  </div>
                   <div class="metric-label">mAP</div>
                 </div>
               </el-col>
               <el-col :span="6">
                 <div class="metric-card">
-                  <div class="metric-value">{{ (model.metrics.precision * 100).toFixed(2) }}%</div>
+                  <div class="metric-value">
+                    {{ model.metrics.precision !== undefined && !isNaN(model.metrics.precision) 
+                      ? (model.metrics.precision * 100).toFixed(2) + '%' 
+                      : '-' }}
+                  </div>
                   <div class="metric-label">精确率</div>
                 </div>
               </el-col>
               <el-col :span="6">
                 <div class="metric-card">
-                  <div class="metric-value">{{ (model.metrics.recall * 100).toFixed(2) }}%</div>
+                  <div class="metric-value">
+                    {{ model.metrics.recall !== undefined && !isNaN(model.metrics.recall) 
+                      ? (model.metrics.recall * 100).toFixed(2) + '%' 
+                      : '-' }}
+                  </div>
                   <div class="metric-label">召回率</div>
                 </div>
               </el-col>
               <el-col :span="6">
                 <div class="metric-card">
-                  <div class="metric-value">{{ (model.metrics.f1 * 100).toFixed(2) }}%</div>
+                  <div class="metric-value">
+                    {{ model.metrics.f1 !== undefined && !isNaN(model.metrics.f1) 
+                      ? (model.metrics.f1 * 100).toFixed(2) + '%' 
+                      : '-' }}
+                  </div>
                   <div class="metric-label">F1值</div>
                 </div>
               </el-col>
             </el-row>
+          </el-card>
+          <el-card v-else-if="model?.metrics && model.metrics.error" class="error-card">
+            <el-alert
+              :title="`训练失败: ${model.metrics.error}`"
+              type="error"
+              :closable="false"
+            />
           </el-card>
           <el-empty v-else description="暂无性能指标数据" />
         </el-tab-pane>

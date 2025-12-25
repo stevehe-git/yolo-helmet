@@ -39,6 +39,7 @@ class Model(db.Model):
     metrics_json = db.Column(db.Text)  # JSON string for metrics
     # 训练参数
     training_params_json = db.Column(db.Text)  # JSON string for training parameters
+    status = db.Column(db.String(20), default='pending')  # pending, training, completed, published, failed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def get_metrics(self):
@@ -60,6 +61,14 @@ class Model(db.Model):
         self.training_params_json = json.dumps(params)
     
     def to_dict(self):
+        # 获取数据集名称（如果有训练参数）
+        dataset_name = None
+        training_params = self.get_training_params()
+        if training_params and training_params.get('dataset_id'):
+            dataset = Dataset.query.get(training_params.get('dataset_id'))
+            if dataset:
+                dataset_name = dataset.name
+        
         return {
             'id': self.id,
             'name': self.name,
@@ -67,7 +76,9 @@ class Model(db.Model):
             'path': self.path,
             'description': self.description,
             'metrics': self.get_metrics(),
-            'training_params': self.get_training_params(),
+            'training_params': training_params,
+            'dataset_name': dataset_name,  # 添加数据集名称
+            'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

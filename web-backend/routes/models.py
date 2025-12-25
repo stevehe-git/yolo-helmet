@@ -13,7 +13,26 @@ models_bp = Blueprint('models', __name__)
 @models_bp.route('', methods=['GET'])
 @login_required
 def get_models():
-    models = Model.query.all()
+    # 支持搜索参数
+    search = request.args.get('search', '').strip()
+    status_filter = request.args.get('status', '').strip()
+    
+    query = Model.query
+    
+    # 搜索过滤
+    if search:
+        query = query.filter(
+            db.or_(
+                Model.name.like(f'%{search}%'),
+                Model.description.like(f'%{search}%')
+            )
+        )
+    
+    # 状态过滤
+    if status_filter:
+        query = query.filter(Model.status == status_filter)
+    
+    models = query.all()
     return jsonify([m.to_dict() for m in models]), 200
 
 @models_bp.route('/<int:model_id>', methods=['GET'])
@@ -90,9 +109,43 @@ def update_model(model_id):
 @admin_required
 def delete_model(model_id):
     model = Model.query.get_or_404(model_id)
+    
+    # Delete model file if exists
+    model_path = Path(model.path)
+    if model_path.exists():
+        model_path.unlink()
+    
     db.session.delete(model)
     db.session.commit()
     return jsonify({'message': 'Model deleted successfully'}), 200
+
+@models_bp.route('/<int:model_id>/publish', methods=['POST'])
+@admin_required
+def publish_model(model_id):
+    """发布模型"""
+    model = Model.query.get_or_404(model_id)
+    
+    if model.status != 'completed':
+        return jsonify({'message': '只有训练完成的模型才能发布'}), 400
+    
+    model.status = 'published'
+    db.session.commit()
+    
+    return jsonify({'message': '模型发布成功', 'model': model.to_dict()}), 200
+
+@models_bp.route('/<int:model_id>/unpublish', methods=['POST'])
+@admin_required
+def unpublish_model(model_id):
+    """取消发布模型"""
+    model = Model.query.get_or_404(model_id)
+    
+    if model.status != 'published':
+        return jsonify({'message': '模型未发布'}), 400
+    
+    model.status = 'completed'
+    db.session.commit()
+    
+    return jsonify({'message': '取消发布成功', 'model': model.to_dict()}), 200
 
 def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name=None):
     """异步训练模型"""
@@ -229,6 +282,8 @@ def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_mode
             
             # 保存指标到模型
             model.set_metrics(metrics)
+            # 更新模型状态为训练完成
+            model.status = 'completed'
             db.session.commit()
             
             print(f"Training completed for model {model_id}")
@@ -239,10 +294,20 @@ def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_mode
             try:
                 model = Model.query.get(model_id)
                 if model:
-                    model.set_metrics({'error': f'训练失败: {str(e)}'})
+                    error_msg = str(e)
+                    if 'does not exist' in error_msg:
+                        error_msg = f'基础模型文件不存在: {base_model_name}'
+                    elif 'FileNotFoundError' in error_msg:
+                        error_msg = '模型文件未找到，请检查模型路径'
+                    else:
+                        error_msg = f'训练失败: {error_msg}'
+                    
+                    model.set_metrics({'error': error_msg})
+                    model.status = 'failed'
                     db.session.commit()
-            except:
-                pass
+                    print(f"Training error saved to model {model_id}: {error_msg}")
+            except Exception as db_error:
+                print(f"Failed to save training error: {str(db_error)}")
 
 @models_bp.route('/train', methods=['POST'])
 @admin_required
@@ -301,12 +366,19 @@ def train_model():
     if not data_yaml.exists():
         return jsonify({'message': '数据集配置文件不存在，请重新上传数据集'}), 400
     
+    # 更新模型状态为训练中
+    model.status = 'training'
+    db.session.commit()
+    
+    # 获取基础模型名称
+    base_model_name = base_model or 'yolov8n.pt'
+    
     # 在后台线程中启动训练（需要传递app实例以创建应用上下文）
     from flask import current_app
     app = current_app._get_current_object()
     training_thread = threading.Thread(
         target=train_model_async,
-        args=(app, model_id, dataset_id, epochs, batch, imgsz, base_model),
+        args=(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name),
         daemon=True
     )
     training_thread.start()
