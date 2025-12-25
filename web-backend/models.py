@@ -35,7 +35,10 @@ class Model(db.Model):
     name = db.Column(db.String(100), nullable=False)
     type = db.Column(db.String(20), nullable=False)  # 'general' or 'custom'
     path = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)  # 模型描述
     metrics_json = db.Column(db.Text)  # JSON string for metrics
+    # 训练参数
+    training_params_json = db.Column(db.Text)  # JSON string for training parameters
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def get_metrics(self):
@@ -46,13 +49,25 @@ class Model(db.Model):
     def set_metrics(self, metrics):
         self.metrics_json = json.dumps(metrics)
     
+    def get_training_params(self):
+        """获取训练参数"""
+        if self.training_params_json:
+            return json.loads(self.training_params_json)
+        return None
+    
+    def set_training_params(self, params):
+        """设置训练参数"""
+        self.training_params_json = json.dumps(params)
+    
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
             'type': self.type,
             'path': self.path,
+            'description': self.description,
             'metrics': self.get_metrics(),
+            'training_params': self.get_training_params(),
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

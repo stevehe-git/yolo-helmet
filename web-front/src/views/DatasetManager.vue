@@ -270,6 +270,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { datasetApi, type Dataset } from '../api/dataset'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -285,6 +286,8 @@ import {
   ArrowDown,
   InfoFilled
 } from '@element-plus/icons-vue'
+
+const router = useRouter()
 
 const datasets = ref<Dataset[]>([])
 const loading = ref(false)
@@ -523,10 +526,17 @@ const handleUpload = async () => {
           result.warnings.join('\n'),
           '格式警告',
           { type: 'warning' }
-        )
+        ).then(() => {
+          // 跳转到模型管理页
+          router.push('/model/manager')
+        })
       }, 500)
     } else {
       ElMessage.success(result?.message || '数据集上传成功')
+      // 跳转到模型管理页
+      setTimeout(() => {
+        router.push('/model/manager')
+      }, 1000)
     }
     
     cancelUpload()
