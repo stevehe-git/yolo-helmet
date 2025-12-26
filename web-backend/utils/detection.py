@@ -172,17 +172,16 @@ class DetectionService:
                 last_detected_frame = result
                 detected_frame_count += 1
                 
-                # 收集关键帧：确保至少收集6个，均匀分布
-                # 策略：前6个检测帧都收集，或者每检测到一定数量的帧就收集一个
+                # 收集关键帧：收集所有检测帧（不限制数量），以便更好地展示检测结果
+                # 如果检测帧数较少，全部收集；如果较多，均匀采样
                 should_collect = False
-                if len(frame_results) < 6:
-                    if detected_frame_count <= 6:
-                        # 前6个检测帧都收集
-                        should_collect = True
-                    else:
-                        # 之后每检测到一定数量的帧就收集一个，确保总共收集6个
-                        collect_interval = max(1, detected_frame_count // 6)
-                        should_collect = (detected_frame_count % collect_interval == 0)
+                if detected_frame_count <= 10:
+                    # 前10个检测帧都收集
+                    should_collect = True
+                else:
+                    # 之后每检测到一定数量的帧就收集一个，最多收集30个关键帧
+                    collect_interval = max(1, detected_frame_count // 30)
+                    should_collect = (detected_frame_count % collect_interval == 0) and len(frame_results) < 30
                 
                 if should_collect:
                     frame_results.append(result)
@@ -208,12 +207,13 @@ class DetectionService:
         
         return {
             'video_url': f'/api/detect/uploads/results/{Path(output_path).name}',
-            'frame_results': frame_results[:6],  # Return top 6 frames
+            'frame_results': frame_results,  # Return all collected keyframes (up to 30)
             'summary': {
                 'total_frames': frame_count,
                 'total_detections': total_detections,
                 'with_helmet': total_with_helmet,
-                'without_helmet': total_without_helmet
+                'without_helmet': total_without_helmet,
+                'detected_frames': detected_frame_count  # 实际检测的帧数
             }
         }
     

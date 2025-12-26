@@ -116,34 +116,52 @@
           </template>
           <el-row :gutter="20">
             <el-col :span="4">
-              <div class="summary-item">
-                <div class="summary-value">{{ detectResult.summary.total_frames }}</div>
-                <div class="summary-label">总帧数</div>
-              </div>
+              <el-tooltip content="视频文件的总帧数，表示视频包含多少帧画面" placement="top">
+                <div class="summary-item">
+                  <div class="summary-value">{{ detectResult.summary.total_frames }}</div>
+                  <div class="summary-label">总帧数</div>
+                </div>
+              </el-tooltip>
             </el-col>
             <el-col :span="4">
-              <div class="summary-item">
-                <div class="summary-value" style="color: #E6A23C;">{{ detectResult.frame_results?.length || 0 }}</div>
-                <div class="summary-label">原始关键帧</div>
-              </div>
+              <el-tooltip content="从检测帧中采样收集的关键帧数量，用于前端展示。最多收集30个关键帧，包含有检测和无检测的帧" placement="top">
+                <div class="summary-item">
+                  <div class="summary-value" style="color: #E6A23C;">{{ detectResult.frame_results?.length || 0 }}</div>
+                  <div class="summary-label">原始关键帧</div>
+                </div>
+              </el-tooltip>
             </el-col>
             <el-col :span="4">
-              <div class="summary-item">
-                <div class="summary-value">{{ detectResult.summary.total_detections }}</div>
-                <div class="summary-label">总检测数</div>
-              </div>
+              <el-tooltip content="根据检测FPS设置，实际进行检测的帧数。系统会根据检测帧率跳过部分帧以提高处理速度" placement="top">
+                <div class="summary-item">
+                  <div class="summary-value" style="color: #909399;">{{ (detectResult.summary as any).detected_frames || '-' }}</div>
+                  <div class="summary-label">检测帧数</div>
+                </div>
+              </el-tooltip>
             </el-col>
             <el-col :span="4">
-              <div class="summary-item">
-                <div class="summary-value success">{{ detectResult.summary.with_helmet }}</div>
-                <div class="summary-label">佩戴安全帽</div>
-              </div>
+              <el-tooltip content="所有检测帧中检测到的目标总数。这是所有检测帧的检测结果累加，一个检测帧可能包含多个目标" placement="top">
+                <div class="summary-item">
+                  <div class="summary-value">{{ detectResult.summary.total_detections }}</div>
+                  <div class="summary-label">总检测数</div>
+                </div>
+              </el-tooltip>
             </el-col>
             <el-col :span="4">
-              <div class="summary-item">
-                <div class="summary-value danger">{{ detectResult.summary.without_helmet }}</div>
-                <div class="summary-label">未佩戴安全帽</div>
-              </div>
+              <el-tooltip content="在所有检测帧中，检测到佩戴安全帽的目标总数" placement="top">
+                <div class="summary-item">
+                  <div class="summary-value success">{{ detectResult.summary.with_helmet }}</div>
+                  <div class="summary-label">佩戴安全帽</div>
+                </div>
+              </el-tooltip>
+            </el-col>
+            <el-col :span="4">
+              <el-tooltip content="在所有检测帧中，检测到未佩戴安全帽的目标总数" placement="top">
+                <div class="summary-item">
+                  <div class="summary-value danger">{{ detectResult.summary.without_helmet }}</div>
+                  <div class="summary-label">未佩戴安全帽</div>
+                </div>
+              </el-tooltip>
             </el-col>
           </el-row>
         </el-card>
