@@ -471,7 +471,7 @@ onUnmounted(() => {
 
 .confidence-label {
   color: #606266;
-  font-size: 14px;
+  font-size: 26px;
   white-space: nowrap;
 }
 
@@ -584,7 +584,7 @@ onUnmounted(() => {
 }
 
 .detection-confidence {
-  font-size: 12px;
+  font-size: 26px;
   color: #606266;
 }
 </style>

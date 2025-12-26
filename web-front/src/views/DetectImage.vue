@@ -358,11 +358,14 @@ onMounted(async () => {
 
 .label {
   color: #606266;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .value {
   font-weight: bold;
   color: #409EFF;
+  font-size: 18px;
 }
 
 .value.success {
@@ -376,6 +379,16 @@ onMounted(async () => {
 .detections-list h4 {
   margin: 0 0 15px 0;
   color: #303133;
+  font-size: 18px;
+}
+
+.detections-list :deep(.el-table) {
+  font-size: 15px;
+}
+
+.detections-list :deep(.el-table th) {
+  font-size: 16px;
+  font-weight: 600;
 }
 </style>
 

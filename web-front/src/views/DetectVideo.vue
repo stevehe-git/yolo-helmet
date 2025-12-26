@@ -535,8 +535,9 @@ onMounted(async () => {
 .frame-stats {
   display: flex;
   justify-content: space-around;
-  font-size: 12px;
+  font-size: 16px;
   color: #606266;
+  font-weight: 500;
 }
 
 .frame-stats .success {
