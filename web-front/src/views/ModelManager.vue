@@ -190,8 +190,8 @@
       </el-form>
       <template #footer>
         <el-button @click="cancelCreate">取消</el-button>
-        <el-button type="primary" @click="handleCreateAndTrain" :loading="creating">
-          {{ creating ? '创建并训练中...' : '创建并开始训练' }}
+        <el-button type="primary" @click="handleCreate" :loading="creating">
+          {{ creating ? '创建中...' : '创建' }}
         </el-button>
       </template>
     </el-dialog>
@@ -492,7 +492,7 @@ const handleImportModel = async () => {
   })
 }
 
-const handleCreateAndTrain = async () => {
+const handleCreate = async () => {
   if (!modelFormRef.value) return
   
   await modelFormRef.value.validate(async (valid) => {
@@ -512,30 +512,9 @@ const handleCreateAndTrain = async () => {
           imgsz: 640
         })
         
-        // 提取模型ID
-        const createdModel: any = createdModelResponse?.data || createdModelResponse
-        const modelId = createdModel?.id
-        
-        if (!modelId) {
-          throw new Error('创建模型失败：未返回模型ID')
-        }
-        
-        // 创建成功后立即开始训练
-        await modelApi.trainModel({
-          model_id: modelId,
-          dataset_id: newModel.value.dataset_id!,
-          epochs: newModel.value.epochs,
-          batch: newModel.value.batch,
-          imgsz: 640,
-          base_model: newModel.value.base_model
-        })
-        
-        ElMessage.success('模型创建成功，训练任务已启动，请稍后查看训练结果')
+        ElMessage.success('模型创建成功，可以在模型列表中查看并开始训练')
         cancelCreate()
         loadModels()
-        
-        // 启动轮询检查训练状态
-        startTrainingStatusPolling(modelId)
       } catch (error: any) {
         ElMessage.error(error.response?.data?.message || error.message || '创建模型失败')
       } finally {

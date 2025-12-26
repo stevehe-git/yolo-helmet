@@ -19,8 +19,9 @@
             >
               <span>{{ model.name }}</span>
               <span style="float: right; color: #8492a6; font-size: 13px">
-                {{ model.type === 'general' ? '通用' : '自定义' }}
-                <el-tag v-if="!model.metrics" type="warning" size="small" style="margin-left: 5px;">未训练</el-tag>
+                {{ model.type === '通用' ? '通用' : '自定义' }}
+                <el-tag v-if="model.status === 'failed'" type="danger" size="small" style="margin-left: 5px;">训练失败</el-tag>
+                <el-tag v-else-if="model.status !== 'completed' && model.status !== 'published'" type="warning" size="small" style="margin-left: 5px;">未训练</el-tag>
               </span>
             </el-option>
           </el-select>
@@ -169,7 +170,7 @@ const detectionRate = computed(() => {
 const handleModelChange = (modelId: number | undefined) => {
   if (modelId) {
     const model = models.value.find(m => m.id === modelId)
-    if (model && !model.metrics) {
+    if (model && model.status !== 'completed' && model.status !== 'published') {
       ElMessage.warning({
         message: `模型"${model.name}"尚未训练完成，可能无法正常使用`,
         duration: 5000
@@ -187,8 +188,8 @@ const validateModel = async (): Promise<boolean> => {
         return false
       }
       
-      // 检查模型是否训练完成
-      if (!model.metrics) {
+      // 检查模型是否训练完成（通用模型默认是completed状态，不需要metrics）
+      if (model.status !== 'completed' && model.status !== 'published') {
         await ElMessageBox.confirm(
           `模型"${model.name}"尚未训练完成，是否继续使用？`,
           '模型未训练',

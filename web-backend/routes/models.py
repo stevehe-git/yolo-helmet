@@ -51,7 +51,7 @@ def get_models():
                         else:
                             model.set_metrics({'error': error_msg})
                     db.session.commit()
-                    print(f"Synced model {model.id} ({model.name}): file missing, status updated to failed")
+                    print(f"Synced model {model.id} ({model.name}, type: {model.type}): file missing, status updated to failed")
         else:
             # 如果模型没有路径，且状态是completed或published，也标记为failed
             if model.status in ['completed', 'published']:
@@ -65,7 +65,7 @@ def get_models():
                     else:
                         model.set_metrics({'error': error_msg})
                 db.session.commit()
-                print(f"Synced model {model.id} ({model.name}): no path, status updated to failed")
+                print(f"Synced model {model.id} ({model.name}, type: {model.type}): no path, status updated to failed")
     
     return jsonify([m.to_dict() for m in models]), 200
 
@@ -75,11 +75,14 @@ def get_model(model_id):
     model = Model.query.get_or_404(model_id)
     
     # 同步检查：验证模型文件是否存在
+    # 对于通用模型和自定义模型，如果状态是completed或published，都需要验证文件存在性
     if model.path:
         model_path = Path(model.path)
         if not model_path.exists():
             # 如果模型文件不存在，且状态是completed或published，更新为failed
+            # 无论是通用模型还是自定义模型，都需要同步状态
             if model.status in ['completed', 'published']:
+                old_status = model.status
                 model.status = 'failed'
                 current_metrics = model.get_metrics()
                 if not current_metrics or not current_metrics.get('error'):
@@ -90,9 +93,12 @@ def get_model(model_id):
                     else:
                         model.set_metrics({'error': error_msg})
                 db.session.commit()
+                print(f"Synced model {model.id} ({model.name}, type: {model.type}): {old_status} -> failed (file missing)")
     else:
         # 如果模型没有路径，且状态是completed或published，也标记为failed
+        # 无论是通用模型还是自定义模型，都需要同步状态
         if model.status in ['completed', 'published']:
+            old_status = model.status
             model.status = 'failed'
             current_metrics = model.get_metrics()
             if not current_metrics or not current_metrics.get('error'):
@@ -103,6 +109,7 @@ def get_model(model_id):
                 else:
                     model.set_metrics({'error': error_msg})
             db.session.commit()
+            print(f"Synced model {model.id} ({model.name}, type: {model.type}): {old_status} -> failed (no path)")
     
     return jsonify(model.to_dict()), 200
 
@@ -206,16 +213,25 @@ def import_model():
             return jsonify({'message': f'无效的模型文件：{str(e)}'}), 400
         
         # 创建模型记录
+        # 导入的模型直接标记为已完成（通用模型和自定义模型都是）
         model = Model(
             name=name,
             type=model_type,
             path=str(target_path.absolute()),
             description=description,
-            status='completed'  # 导入的模型直接标记为已完成
+            status='completed'
         )
         
         db.session.add(model)
         db.session.commit()
+        
+        # 导入后立即验证文件是否存在，确保状态同步
+        # 如果文件不存在（虽然理论上不应该发生），更新状态
+        if not target_path.exists():
+            model.status = 'failed'
+            model.set_metrics({'error': '模型文件保存后验证失败'})
+            db.session.commit()
+            return jsonify({'message': '模型文件保存失败，请重试'}), 500
         
         return jsonify({
             'message': '模型导入成功',
@@ -333,7 +349,7 @@ def sync_models():
                         model.set_metrics({'error': error_msg})
                     db.session.commit()
                     synced_count += 1
-                    print(f"Synced model {model.id} ({model.name}): {old_status} -> failed (file missing)")
+                    print(f"Synced model {model.id} ({model.name}, type: {model.type}): {old_status} -> failed (file missing)")
     
     return jsonify({
         'message': f'同步完成，已更新 {synced_count} 个模型的状态',
