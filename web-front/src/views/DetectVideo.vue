@@ -146,7 +146,19 @@
           <template #header>
             <span>视频预览</span>
           </template>
-          <video :src="detectResult.video_url" controls style="width: 100%"></video>
+          <video 
+            controls 
+            style="width: 100%"
+            preload="metadata"
+            @error="handleVideoError"
+            @loadedmetadata="handleVideoLoaded"
+          >
+            <!-- MP4格式 - 广泛支持，包括Safari和移动设备 -->
+            <source :src="detectResult.video_url" type="video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;" />
+            <!-- WebM格式 - Chrome和Firefox支持，文件更小 -->
+            <source v-if="(detectResult as any).video_url_webm" :src="(detectResult as any).video_url_webm" type="video/webm; codecs=&quot;vp8, vorbis&quot;" />
+            <p>您的浏览器不支持HTML5视频播放。请使用现代浏览器（如Chrome、Firefox、Safari或Edge）访问。</p>
+          </video>
         </el-card>
 
         <el-card style="margin-top: 20px">
@@ -197,6 +209,44 @@ const clearFile = () => {
   selectedFile.value = null
   detectResult.value = null
   progress.value = 0
+}
+
+const handleVideoError = (event: any) => {
+  const video = event.target as HTMLVideoElement
+  const error = video.error
+  let errorMessage = '视频加载失败'
+  
+  if (error) {
+    switch (error.code) {
+      case error.MEDIA_ERR_ABORTED:
+        errorMessage = '视频加载被中止'
+        break
+      case error.MEDIA_ERR_NETWORK:
+        errorMessage = '网络错误，无法加载视频'
+        break
+      case error.MEDIA_ERR_DECODE:
+        errorMessage = '视频解码失败'
+        break
+      case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMessage = '视频格式不支持或文件不存在'
+        break
+      default:
+        errorMessage = `视频加载失败 (错误代码: ${error.code})`
+    }
+  }
+  
+  console.error('视频加载失败:', {
+    error,
+    src: video.src,
+    networkState: video.networkState,
+    readyState: video.readyState
+  })
+  
+  ElMessage.error(errorMessage)
+}
+
+const handleVideoLoaded = () => {
+  console.log('视频元数据加载成功')
 }
 
 const handleModelChange = (modelId: number | undefined) => {
@@ -285,6 +335,17 @@ const handleDetect = async () => {
     // 响应拦截器已经返回了 response.data，所以直接使用 response
     detectResult.value = response as unknown as VideoDetectResult
     progress.value = 100
+    
+    // 确保视频URL是完整的绝对路径
+    if (detectResult.value && detectResult.value.video_url) {
+      // 如果URL不是以http开头，添加当前域名
+      if (!detectResult.value.video_url.startsWith('http')) {
+        const baseURL = window.location.origin
+        detectResult.value.video_url = baseURL + detectResult.value.video_url
+      }
+      console.log('视频URL:', detectResult.value.video_url)
+    }
+    
     ElMessage.success('检测完成')
   } catch (error: any) {
     const errorMessage = error.response?.data?.message || error.message || '检测失败'

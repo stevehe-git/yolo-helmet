@@ -119,11 +119,19 @@ class DetectionService:
         if output_path is None:
             output_path = Config.UPLOAD_FOLDER / 'results' / f'result_{Path(video_path).stem}.mp4'
         
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # 使用H.264编码（更兼容，支持更多浏览器）
+        # 尝试使用更好的编码格式，如果失败则回退到mp4v
+        fourcc = cv2.VideoWriter_fourcc(*'H264')  # H.264编码，更好的兼容性
         video_fps = int(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         out = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
+        
+        # 如果H.264编码失败，尝试使用mp4v
+        if not out.isOpened():
+            print("Warning: H.264 codec not available, falling back to mp4v")
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
         
         # 计算跳帧间隔：根据检测FPS和视频FPS计算
         detection_fps = detection_fps if detection_fps is not None else self.detection_fps
@@ -173,7 +181,7 @@ class DetectionService:
         out.release()
         
         return {
-            'video_url': f'/api/uploads/results/{Path(output_path).name}',
+            'video_url': f'/api/detect/uploads/results/{Path(output_path).name}',
             'frame_results': frame_results[:6],  # Return top 6 frames
             'summary': {
                 'total_frames': frame_count,

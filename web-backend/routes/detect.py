@@ -182,33 +182,108 @@ def stop_realtime():
     realtime_active = False
     return jsonify({'message': 'Realtime detection stopped'}), 200
 
-@detect_bp.route('/realtime/frame', methods=['GET'])
+@detect_bp.route('/realtime/frame', methods=['POST'])
 @login_required
 def get_realtime_frame():
     global realtime_active, detection_service
     if not realtime_active:
         return jsonify({'message': 'Realtime detection not active'}), 400
     
-    # 获取置信度和FPS参数
-    confidence = request.args.get('confidence', type=float)
-    fps = request.args.get('fps', type=int)
-    if detection_service:
-        if confidence is not None:
-            detection_service.confidence_threshold = float(confidence)
-        if fps is not None:
-            detection_service.detection_fps = int(fps)
+    if not detection_service:
+        return jsonify({'message': 'Detection service not initialized'}), 400
     
-    # In a real implementation, this would capture from camera
-    # For now, return empty result
-    return jsonify({
-        'image': '',
-        'detections': []
-    }), 200
+    if 'image' not in request.files:
+        return jsonify({'message': 'No image file provided'}), 400
+    
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'message': 'No file selected'}), 400
+    
+    # 获取置信度和FPS参数
+    confidence = request.form.get('confidence', type=float)
+    fps = request.form.get('fps', type=int)
+    if confidence is not None:
+        detection_service.confidence_threshold = float(confidence)
+    if fps is not None:
+        detection_service.detection_fps = int(fps)
+    
+    try:
+        # 保存临时文件
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+            file.save(tmp_file.name)
+            tmp_path = tmp_file.name
+        
+        try:
+            # 执行检测
+            result = detection_service.detect_image(tmp_path, confidence=detection_service.confidence_threshold)
+            
+            return jsonify({
+                'image': result['image'],
+                'detections': result['detections']
+            }), 200
+        finally:
+            # 清理临时文件
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+    except Exception as e:
+        import traceback
+        print(f"Error in realtime frame detection: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'message': f'检测失败: {str(e)}'}), 500
 
-@detect_bp.route('/uploads/results/<filename>', methods=['GET'])
+@detect_bp.route('/uploads/results/<filename>', methods=['GET', 'OPTIONS'])
 def get_result_file(filename):
-    filepath = Config.UPLOAD_FOLDER / 'results' / filename
-    if filepath.exists():
-        return send_file(filepath)
-    return jsonify({'message': 'File not found'}), 404
+    # 处理OPTIONS预检请求
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+    
+    # 安全地处理文件名，防止路径遍历攻击
+    # 注意：secure_filename可能会改变文件名，所以先保存原始文件名用于日志
+    original_filename = filename
+    safe_filename = secure_filename(filename)
+    filepath = Config.UPLOAD_FOLDER / 'results' / safe_filename
+    
+    # 如果secure_filename改变了文件名，尝试使用原始文件名
+    if not filepath.exists() and safe_filename != original_filename:
+        filepath = Config.UPLOAD_FOLDER / 'results' / original_filename
+    
+    if not filepath.exists():
+        print(f"Video file not found: {filepath.absolute()}")
+        print(f"Looking for: {original_filename}")
+        print(f"Safe filename: {safe_filename}")
+        # 列出目录中的文件以便调试
+        results_dir = Config.UPLOAD_FOLDER / 'results'
+        if results_dir.exists():
+            files = list(results_dir.glob('*.mp4'))
+            print(f"Available files: {[f.name for f in files[:5]]}")
+        return jsonify({'message': f'File not found: {original_filename}'}), 404
+    
+    try:
+        # 设置正确的响应头，支持视频流式传输
+        response = send_file(
+            str(filepath.absolute()), 
+            mimetype='video/mp4',
+            as_attachment=False,
+            conditional=True  # 支持条件请求（If-Modified-Since等）
+        )
+        # 添加CORS头
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        # 支持Range请求（视频流式播放必需）
+        response.headers['Accept-Ranges'] = 'bytes'
+        # 设置缓存控制
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+        return response
+    except Exception as e:
+        print(f"Error serving video file: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'message': f'Error serving file: {str(e)}'}), 500
 

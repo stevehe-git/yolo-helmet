@@ -329,59 +329,83 @@ const startFrameCapture = () => {
   const captureFrame = async () => {
     if (!videoElement.value || !canvasElement.value || !isRunning.value) return
 
-    try {
-      const response = await detectApi.getRealtimeFrame(confidenceThreshold.value, detectionFps.value)
-      const result = response.data || response
+    const canvas = canvasElement.value
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    canvas.width = videoElement.value.videoWidth
+    canvas.height = videoElement.value.videoHeight
+    ctx.drawImage(videoElement.value, 0, 0)
+    
+    // 将canvas转换为blob并发送到后端
+    canvas.toBlob(async (blob) => {
+      if (!blob || !isRunning.value) return
       
-      // Update stats
-      if (result.detections && Array.isArray(result.detections)) {
-        result.detections.forEach((detection: any) => {
-          stats.value.total++
-          if (detection.class === 'with_helmet') {
-            stats.value.withHelmet++
-          } else {
-            stats.value.withoutHelmet++
-          }
-          
-          // Add to recent detections
-          recentDetections.value.unshift({
-            time: new Date().toLocaleTimeString(),
-            type: detection.class === 'with_helmet' ? 'with_helmet' : 'without_helmet',
-            confidence: detection.confidence
+      try {
+        const formData = new FormData()
+        formData.append('image', blob, 'frame.jpg')
+        formData.append('confidence', confidenceThreshold.value.toString())
+        formData.append('fps', detectionFps.value.toString())
+        
+        const response = await detectApi.detectRealtimeFrame(formData)
+        const result = response.data || response
+        
+        // Update stats
+        if (result.detections && Array.isArray(result.detections)) {
+          result.detections.forEach((detection: any) => {
+            stats.value.total++
+            if (detection.class === 'with_helmet') {
+              stats.value.withHelmet++
+            } else {
+              stats.value.withoutHelmet++
+            }
+            
+            // Add to recent detections
+            recentDetections.value.unshift({
+              time: new Date().toLocaleTimeString(),
+              type: detection.class === 'with_helmet' ? 'with_helmet' : 'without_helmet',
+              confidence: detection.confidence
+            })
+            
+            if (recentDetections.value.length > 10) {
+              recentDetections.value.pop()
+            }
           })
-          
-          if (recentDetections.value.length > 10) {
-            recentDetections.value.pop()
-          }
-        })
-      }
+        }
 
-      // Draw result on canvas (simplified - in real implementation, draw bounding boxes)
-      const ctx = canvasElement.value.getContext('2d')
-      if (ctx && videoElement.value) {
-        canvasElement.value.width = videoElement.value.videoWidth
-        canvasElement.value.height = videoElement.value.videoHeight
-        ctx.drawImage(videoElement.value, 0, 0)
-        // Draw detections would go here
+        // Draw result on canvas with detections
+        if (result.image && canvasElement.value) {
+          const img = new Image()
+          img.onload = () => {
+            if (canvasElement.value) {
+              const resultCtx = canvasElement.value.getContext('2d')
+              if (resultCtx) {
+                resultCtx.clearRect(0, 0, canvasElement.value.width, canvasElement.value.height)
+                resultCtx.drawImage(img, 0, 0, canvasElement.value.width, canvasElement.value.height)
+              }
+            }
+          }
+          img.src = `data:image/jpeg;base64,${result.image}`
+        }
+      } catch (error: any) {
+        const errorMessage = error.response?.data?.message || error.message || '获取检测帧失败'
+        
+        // 检查是否是模型相关错误
+        if (errorMessage.includes('model') || errorMessage.includes('模型') || 
+            errorMessage.includes('Model') || errorMessage.includes('not found') ||
+            errorMessage.includes('不存在') || errorMessage.includes('无法加载') ||
+            errorMessage.includes('not active')) {
+          ElMessage.error({
+            message: '模型检测失败，请检查模型状态',
+            duration: 3000
+          })
+          // 停止检测
+          stopDetection()
+        } else {
+          console.error('Failed to detect frame:', error)
+        }
       }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || '获取检测帧失败'
-      
-      // 检查是否是模型相关错误
-      if (errorMessage.includes('model') || errorMessage.includes('模型') || 
-          errorMessage.includes('Model') || errorMessage.includes('not found') ||
-          errorMessage.includes('不存在') || errorMessage.includes('无法加载') ||
-          errorMessage.includes('not active')) {
-        ElMessage.error({
-          message: '模型检测失败，请检查模型状态',
-          duration: 3000
-        })
-        // 停止检测
-        stopDetection()
-      } else {
-        console.error('Failed to get frame:', error)
-      }
-    }
+    }, 'image/jpeg', 0.8)
   }
   
   // 启动定时器

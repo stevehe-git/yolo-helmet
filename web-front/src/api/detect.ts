@@ -47,8 +47,8 @@ export const detectApi = {
     fps: fps
   }),
   stopRealtime: () => api.post('/detect/realtime/stop'),
-  getRealtimeFrame: (confidence?: number, fps?: number) => api.get<{ image: string; detections: Detection[] }>('/detect/realtime/frame', {
-    params: { confidence: confidence, fps: fps }
+  detectRealtimeFrame: (formData: FormData) => api.post<{ image: string; detections: Detection[] }>('/detect/realtime/frame', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
 
