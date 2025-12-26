@@ -138,7 +138,8 @@ def create_model():
         'base_model': data.get('base_model', 'yolo11n.pt'),
         'epochs': data.get('epochs', 100),
         'batch': data.get('batch', 8),
-        'imgsz': data.get('imgsz', 640)
+        'imgsz': data.get('imgsz', 640),
+        'device': data.get('device', 'cpu')  # 默认使用CPU
     }
     if training_params.get('dataset_id'):
         model.set_training_params(training_params)
@@ -414,7 +415,7 @@ def sync_models():
         'synced_count': synced_count
     }), 200
 
-def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name=None):
+def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name=None, device='cpu'):
     """异步训练模型"""
     # 在应用上下文中运行
     with app.app_context():
@@ -428,6 +429,35 @@ def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_mode
             if not dataset:
                 print(f"Dataset {dataset_id} not found")
                 return
+            
+            # 检查设备可用性
+            if device == 'gpu':
+                try:
+                    import torch
+                    if not torch.cuda.is_available():
+                        error_msg = 'GPU不可用：未检测到CUDA支持的GPU设备，请使用CPU训练或检查GPU驱动是否正确安装'
+                        print(f"GPU training failed: {error_msg}")
+                        model.set_metrics({'error': error_msg})
+                        model.status = 'failed'
+                        db.session.commit()
+                        return
+                    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+                except ImportError:
+                    error_msg = 'GPU训练失败：PyTorch未正确安装或版本不兼容，请使用CPU训练'
+                    print(f"GPU training failed: {error_msg}")
+                    model.set_metrics({'error': error_msg})
+                    model.status = 'failed'
+                    db.session.commit()
+                    return
+                except Exception as e:
+                    error_msg = f'GPU训练失败：{str(e)}，请使用CPU训练'
+                    print(f"GPU training failed: {error_msg}")
+                    model.set_metrics({'error': error_msg})
+                    model.status = 'failed'
+                    db.session.commit()
+                    return
+            else:
+                print("Using CPU for training")
             
             # 获取数据集目录
             dataset_dir = Config.UPLOAD_FOLDER / 'datasets' / str(dataset_id)
@@ -466,12 +496,15 @@ def train_model_async(app, model_id, dataset_id, epochs, batch, imgsz, base_mode
                     print(f"Falling back to default model: yolo11n")
                     base_model = YOLO('yolo11n')
             
-            # 开始训练
+            # 开始训练，指定设备
+            device_param = '0' if device == 'gpu' else 'cpu'
+            print(f"Starting training with device: {device_param}")
             results = base_model.train(
                 data=str(data_yaml.absolute()),
                 epochs=epochs,
                 batch=batch,
                 imgsz=imgsz,
+                device=device_param,  # 指定训练设备
                 project=str(Config.MODELS_FOLDER / 'runs'),
                 name=f'model_{model_id}',
                 exist_ok=True,
@@ -634,6 +667,7 @@ def train_model():
     batch = data.get('batch')
     imgsz = data.get('imgsz')
     base_model = data.get('base_model')
+    device = data.get('device')
     
     if not dataset_id:
         training_params = model.get_training_params()
@@ -644,20 +678,34 @@ def train_model():
         batch = training_params.get('batch', 8)
         imgsz = training_params.get('imgsz', 640)
         base_model = training_params.get('base_model', 'yolo11n.pt')
+        device = training_params.get('device', 'cpu')  # 从训练参数中获取设备，默认为CPU
     else:
         # 如果提供了参数，使用提供的参数，并更新模型保存的参数
         epochs = epochs or 100
         batch = batch or 8
         imgsz = imgsz or 640
         base_model = base_model or 'yolo11n.pt'
+        device = device or 'cpu'  # 如果没有提供设备，默认为CPU
         model.set_training_params({
             'dataset_id': dataset_id,
             'base_model': base_model,
             'epochs': epochs,
             'batch': batch,
-            'imgsz': imgsz
+            'imgsz': imgsz,
+            'device': device
         })
         db.session.commit()
+    
+    # 如果选择GPU，先检查GPU是否可用
+    if device == 'gpu':
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return jsonify({'message': 'GPU不可用：未检测到CUDA支持的GPU设备，请使用CPU训练或检查GPU驱动是否正确安装'}), 400
+        except ImportError:
+            return jsonify({'message': 'GPU训练失败：PyTorch未正确安装或版本不兼容，请使用CPU训练'}), 400
+        except Exception as e:
+            return jsonify({'message': f'GPU训练失败：{str(e)}，请使用CPU训练'}), 400
     
     dataset = Dataset.query.get_or_404(dataset_id)
     
@@ -683,7 +731,7 @@ def train_model():
     app = current_app._get_current_object()
     training_thread = threading.Thread(
         target=train_model_async,
-        args=(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name),
+        args=(app, model_id, dataset_id, epochs, batch, imgsz, base_model_name, device),
         daemon=True
     )
     training_thread.start()

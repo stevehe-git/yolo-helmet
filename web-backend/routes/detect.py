@@ -13,6 +13,7 @@ detect_bp = Blueprint('detect', __name__)
 # Global detection service instance
 detection_service = None
 realtime_active = False
+realtime_stats = {}  # 存储实时检测的统计数据
 
 def get_detection_service(model_id=None):
     global detection_service
@@ -163,7 +164,7 @@ def detect_video():
 @detect_bp.route('/realtime/start', methods=['POST'])
 @login_required
 def start_realtime():
-    global realtime_active, detection_service
+    global realtime_active, detection_service, realtime_stats
     data = request.get_json()
     model_id = data.get('model_id') if data else None
     confidence = data.get('confidence', 0.25) if data else 0.25  # 默认0.25
@@ -181,6 +182,14 @@ def start_realtime():
             detection_service.confidence_threshold = float(confidence)
             detection_service.detection_fps = int(fps)
         
+        # 初始化实时检测统计数据
+        realtime_stats = {
+            'model_id': model_id,
+            'total': 0,
+            'with_helmet': 0,
+            'without_helmet': 0
+        }
+        
         realtime_active = True
         return jsonify({'message': 'Realtime detection started'}), 200
     except (ValueError, FileNotFoundError, RuntimeError) as e:
@@ -191,14 +200,43 @@ def start_realtime():
 @detect_bp.route('/realtime/stop', methods=['POST'])
 @login_required
 def stop_realtime():
-    global realtime_active
+    global realtime_active, detection_service, realtime_stats
+    user = get_current_user()
+    
+    # 如果实时检测有统计数据，保存到数据库
+    if realtime_active and detection_service and 'realtime_stats' in globals():
+        stats = globals().get('realtime_stats', {})
+        if stats.get('total', 0) > 0:
+            try:
+                # 获取模型ID（从detection_service中获取，或从请求中获取）
+                model_id = stats.get('model_id')
+                if model_id:
+                    detection = Detection(
+                        user_id=user.id if user else None,
+                        model_id=model_id,
+                        detection_type='realtime',  # 使用 'realtime' 类型
+                        with_helmet=stats.get('with_helmet', 0),
+                        without_helmet=stats.get('without_helmet', 0),
+                        total=stats.get('total', 0)
+                    )
+                    db.session.add(detection)
+                    db.session.commit()
+                    print(f"Saved realtime detection record: {detection.id}")
+            except Exception as e:
+                print(f"Error saving realtime detection: {str(e)}")
+                db.session.rollback()
+    
     realtime_active = False
+    # 清理统计数据
+    if 'realtime_stats' in globals():
+        globals()['realtime_stats'] = {}
+    
     return jsonify({'message': 'Realtime detection stopped'}), 200
 
 @detect_bp.route('/realtime/frame', methods=['POST'])
 @login_required
 def get_realtime_frame():
-    global realtime_active, detection_service
+    global realtime_active, detection_service, realtime_stats
     if not realtime_active:
         return jsonify({'message': 'Realtime detection not active'}), 400
     
@@ -231,6 +269,25 @@ def get_realtime_frame():
         try:
             # 执行检测
             result = detection_service.detect_image(tmp_path, confidence=detection_service.confidence_threshold)
+            
+            # 更新实时检测统计数据（不保存到数据库，只在停止时保存）
+            # 统计方式：按帧统计，不是按对象统计
+            if 'realtime_stats' in globals():
+                stats = globals()['realtime_stats']
+                # 总检测帧数+1
+                stats['total'] = stats.get('total', 0) + 1
+                
+                # 如果这一帧有检测结果
+                if result['stats']['total'] > 0:
+                    # 检查是否有安全帽和无安全帽的检测
+                    has_with_helmet = any(d.get('class') == 'with_helmet' for d in result.get('detections', []))
+                    has_without_helmet = any(d.get('class') == 'without_helmet' for d in result.get('detections', []))
+                    # 按帧统计：如果这一帧包含有安全帽的检测，则with_helmet帧数+1
+                    if has_with_helmet:
+                        stats['with_helmet'] = stats.get('with_helmet', 0) + 1
+                    # 按帧统计：如果这一帧包含无安全帽的检测，则without_helmet帧数+1
+                    if has_without_helmet:
+                        stats['without_helmet'] = stats.get('without_helmet', 0) + 1
             
             return jsonify({
                 'image': result['image'],

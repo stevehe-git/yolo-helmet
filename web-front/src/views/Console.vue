@@ -183,27 +183,58 @@ const initCharts = () => {
     })
   }
 
-  // Daily chart
+  // Daily chart - 显示 image, video, realtime 三种类型的检测次数
   if (dailyChartRef.value) {
     const dates = statistics.value.daily_stats.map(s => s.date)
-    const counts = statistics.value.daily_stats.map(s => s.count)
+    const imageCounts = statistics.value.daily_stats.map(s => s.image || 0)
+    const videoCounts = statistics.value.daily_stats.map(s => s.video || 0)
+    const realtimeCounts = statistics.value.daily_stats.map(s => s.realtime || 0)
     
     dailyChart = initChart(dailyChartRef.value, dailyChart, (chart) => {
       chart.setOption({
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: dates },
-        yAxis: { type: 'value' },
-        series: [{
-          data: counts,
-          type: 'bar',
-          itemStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: '#83bff6' },
-              { offset: 0.5, color: '#188df0' },
-              { offset: 1, color: '#188df0' }
-            ])
+        tooltip: { 
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' }
+        },
+        legend: {
+          data: ['图片检测', '视频检测', '实时检测'],
+          top: 10
+        },
+        xAxis: { 
+          type: 'category', 
+          data: dates,
+          axisLabel: {
+            rotate: 45,
+            interval: 0
           }
-        }]
+        },
+        yAxis: { type: 'value' },
+        series: [
+          {
+            name: '图片检测',
+            data: imageCounts,
+            type: 'bar',
+            itemStyle: {
+              color: '#5470c6'
+            }
+          },
+          {
+            name: '视频检测',
+            data: videoCounts,
+            type: 'bar',
+            itemStyle: {
+              color: '#91cc75'
+            }
+          },
+          {
+            name: '实时检测',
+            data: realtimeCounts,
+            type: 'bar',
+            itemStyle: {
+              color: '#fac858'
+            }
+          }
+        ]
       })
     })
   }

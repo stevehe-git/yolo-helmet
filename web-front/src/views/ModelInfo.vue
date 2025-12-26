@@ -29,7 +29,8 @@
                 <div v-if="model.training_params.epochs">迭代次数: {{ model.training_params.epochs }}</div>
                 <div v-if="model.training_params.batch">批次大小: {{ model.training_params.batch }}</div>
                 <div v-if="model.training_params.imgsz">图像尺寸: {{ model.training_params.imgsz }}</div>
-                <span v-if="!model.training_params.epochs && !model.training_params.batch && !model.training_params.imgsz">-</span>
+                <div v-if="model.training_params.device">训练设备: {{ model.training_params.device === 'gpu' ? 'GPU' : 'CPU' }}</div>
+                <span v-if="!model.training_params.epochs && !model.training_params.batch && !model.training_params.imgsz && !model.training_params.device">-</span>
               </div>
               <span v-else>-</span>
             </el-descriptions-item>

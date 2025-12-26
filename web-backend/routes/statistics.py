@@ -20,15 +20,34 @@ def get_statistics():
         if total_people > 0:
             detection_rate = with_helmet / total_people
     
-    # Get daily statistics for last 30 days
+    # Get daily statistics for last 30 days, grouped by detection type
     daily_stats = []
+    detection_types = ['image', 'video', 'realtime']
+    
     for i in range(30):
         date = datetime.now() - timedelta(days=i)
         date_str = date.strftime('%Y-%m-%d')
-        count = Detection.query.filter(
-            func.date(Detection.created_at) == date.date()
-        ).count()
-        daily_stats.append({'date': date_str, 'count': count})
+        date_obj = date.date()
+        
+        # 统计每种类型的检测次数
+        stats_by_type = {}
+        for det_type in detection_types:
+            count = Detection.query.filter(
+                func.date(Detection.created_at) == date_obj,
+                Detection.detection_type == det_type
+            ).count()
+            stats_by_type[det_type] = count
+        
+        # 总检测次数
+        total_count = sum(stats_by_type.values())
+        
+        daily_stats.append({
+            'date': date_str,
+            'count': total_count,
+            'image': stats_by_type['image'],
+            'video': stats_by_type['video'],
+            'realtime': stats_by_type['realtime']
+        })
     
     daily_stats.reverse()
     

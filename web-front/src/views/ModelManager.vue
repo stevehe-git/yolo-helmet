@@ -8,7 +8,7 @@
           <el-icon><Refresh /></el-icon>
           刷新列表
         </el-button>
-        <el-button type="primary" @click="showCreateDialog = true">
+        <el-button type="primary" @click="handleCreateModel">
           <el-icon><Plus /></el-icon>
           创建模型
         </el-button>
@@ -103,7 +103,7 @@
             <el-button type="primary" link @click="viewModelInfo(row.id)">
               查看
             </el-button>
-            <el-button type="primary" link @click="editModel(row)">
+            <el-button type="primary" link @click="handleEdit(row)">
               编辑
             </el-button>
             <!-- 训练按钮：只要不是completed和published状态，就显示 -->
@@ -141,83 +141,28 @@
       </el-table>
     </el-card>
 
-    <!-- 创建模型对话框 -->
-    <el-dialog v-model="showCreateDialog" title="创建模型" width="600px" :close-on-click-modal="false">
-      <el-form :model="newModel" :rules="modelRules" ref="modelFormRef" label-width="120px">
+    <!-- 创建/编辑模型对话框（合并） -->
+    <el-dialog v-model="showModelDialog" :title="editingModel ? '编辑模型' : '创建模型'" width="600px" :close-on-click-modal="false">
+      <el-form :model="modelForm" :rules="editingModel ? editModelRules : modelRules" ref="modelFormRef" label-width="120px">
         <el-form-item label="模型名称" prop="name">
-          <el-input v-model="newModel.name" placeholder="请输入模型名称" />
+          <el-input v-model="modelForm.name" placeholder="请输入模型名称" />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="newModel.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入模型描述"
-          />
-        </el-form-item>
-        <el-form-item label="训练数据集" prop="dataset_id">
-          <el-select v-model="newModel.dataset_id" placeholder="请选择数据集" style="width: 100%">
-            <el-option
-              v-for="dataset in datasets"
-              :key="dataset.id"
-              :label="`${dataset.name} (${dataset.train_count || 0}训练/${dataset.val_count || 0}验证)`"
-              :value="dataset.id"
-              :disabled="dataset.status !== 'validated'"
-            >
-              <span>{{ dataset.name }}</span>
-              <el-tag v-if="dataset.status === 'validated'" type="success" size="small" style="margin-left: 10px;">已验证</el-tag>
-              <el-tag v-else type="warning" size="small" style="margin-left: 10px;">未验证</el-tag>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="基础模型" prop="base_model">
-          <el-select v-model="newModel.base_model" placeholder="选择基础模型" style="width: 100%">
-            <el-option label="YOLOv8n (小型模型)" value="yolov8n.pt" />
-            <el-option label="YOLOv8s (中型模型)" value="yolov8s.pt" />
-            <el-option label="YOLOv8m (大型模型)" value="yolov8m.pt" />
-            <el-option label="YOLOv8l (大型模型)" value="yolov8l.pt" />
-            <el-option label="YOLOv8x (超大型模型)" value="yolov8x.pt" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="迭代次数" prop="epochs">
-          <el-input-number v-model="newModel.epochs" :min="1" :max="1000" :step="10" style="width: 100%" />
-          <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：100-300</div>
-        </el-form-item>
-        <el-form-item label="批次大小" prop="batch">
-          <el-input-number v-model="newModel.batch" :min="1" :max="64" :step="1" style="width: 100%" />
-          <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：8-16（根据显存调整）</div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="cancelCreate">取消</el-button>
-        <el-button type="primary" @click="handleCreate" :loading="creating">
-          {{ creating ? '创建中...' : '创建' }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 编辑模型对话框 -->
-    <el-dialog v-model="showEditDialog" title="编辑模型" width="600px" :close-on-click-modal="false">
-      <el-form :model="editModelForm" :rules="editModelRules" ref="editFormRef" label-width="120px">
-        <el-form-item label="模型名称" prop="name">
-          <el-input v-model="editModelForm.name" placeholder="请输入模型名称" />
-        </el-form-item>
-        <el-form-item label="模型类型" prop="type">
-          <el-select v-model="editModelForm.type" placeholder="选择模型类型" style="width: 100%">
+        <el-form-item v-if="editingModel" label="模型类型" prop="type">
+          <el-select v-model="modelForm.type" placeholder="选择模型类型" style="width: 100%">
             <el-option label="通用模型" value="general" />
             <el-option label="自定义模型" value="custom" />
           </el-select>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
-            v-model="editModelForm.description"
+            v-model="modelForm.description"
             type="textarea"
             :rows="3"
             placeholder="请输入模型描述"
           />
         </el-form-item>
         <el-form-item label="训练数据集" prop="dataset_id">
-          <el-select v-model="editModelForm.dataset_id" placeholder="请选择数据集" style="width: 100%">
+          <el-select v-model="modelForm.dataset_id" placeholder="请选择数据集" style="width: 100%">
             <el-option
               v-for="dataset in datasets"
               :key="dataset.id"
@@ -232,7 +177,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="基础模型" prop="base_model">
-          <el-select v-model="editModelForm.base_model" placeholder="选择基础模型" style="width: 100%">
+          <el-select v-model="modelForm.base_model" placeholder="选择基础模型" style="width: 100%">
             <el-option label="YOLOv8n (小型模型)" value="yolov8n.pt" />
             <el-option label="YOLOv8s (中型模型)" value="yolov8s.pt" />
             <el-option label="YOLOv8m (大型模型)" value="yolov8m.pt" />
@@ -241,18 +186,25 @@
           </el-select>
         </el-form-item>
         <el-form-item label="迭代次数" prop="epochs">
-          <el-input-number v-model="editModelForm.epochs" :min="1" :max="1000" :step="10" style="width: 100%" />
+          <el-input-number v-model="modelForm.epochs" :min="1" :max="1000" :step="10" style="width: 100%" />
           <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：100-300</div>
         </el-form-item>
         <el-form-item label="批次大小" prop="batch">
-          <el-input-number v-model="editModelForm.batch" :min="1" :max="64" :step="1" style="width: 100%" />
+          <el-input-number v-model="modelForm.batch" :min="1" :max="64" :step="1" style="width: 100%" />
           <div style="color: #909399; font-size: 12px; margin-top: 5px;">建议值：8-16（根据显存调整）</div>
+        </el-form-item>
+        <el-form-item label="训练设备" prop="device">
+          <el-radio-group v-model="modelForm.device">
+            <el-radio label="cpu">CPU</el-radio>
+            <el-radio label="gpu">GPU</el-radio>
+          </el-radio-group>
+          <div style="color: #909399; font-size: 12px; margin-top: 5px;">选择训练使用的设备，GPU训练速度更快但需要支持CUDA的显卡</div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="cancelEdit">取消</el-button>
-        <el-button type="primary" @click="handleUpdateModel" :loading="updating">
-          {{ updating ? '更新中...' : '确定' }}
+        <el-button @click="cancelModelDialog">取消</el-button>
+        <el-button type="primary" @click="handleSaveModel" :loading="creating || updating">
+          {{ (creating || updating) ? (editingModel ? '更新中...' : '创建中...') : (editingModel ? '确定' : '创建') }}
         </el-button>
       </template>
     </el-dialog>
@@ -323,11 +275,9 @@ const router = useRouter()
 const models = ref<Model[]>([])
 const datasets = ref<Dataset[]>([])
 const loading = ref(false)
-const showCreateDialog = ref(false)
-const showEditDialog = ref(false)
+const showModelDialog = ref(false)
 const showImportDialog = ref(false)
 const modelFormRef = ref<FormInstance>()
-const editFormRef = ref<FormInstance>()
 const importFormRef = ref<FormInstance>()
 const updating = ref(false)
 const creating = ref(false)
@@ -338,24 +288,17 @@ const searchForm = ref({
   keyword: ''
 })
 
-const newModel = ref({
-  name: '',
-  description: '',
-  dataset_id: undefined as number | undefined,
-  base_model: 'yolov8n.pt',
-  epochs: 100,
-  batch: 8
-})
-
-const editModelForm = ref({
+const modelForm = ref({
   name: '',
   type: 'custom' as 'general' | 'custom',
   description: '',
   dataset_id: undefined as number | undefined,
   base_model: 'yolov8n.pt',
   epochs: 100,
-  batch: 8
+  batch: 8,
+  device: 'cpu' as 'cpu' | 'gpu'
 })
+
 
 const editModelRules: FormRules = {
   name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
@@ -423,15 +366,34 @@ const handleClearSearch = () => {
   loadModels()
 }
 
-const cancelCreate = () => {
-  showCreateDialog.value = false
-  newModel.value = {
+const handleCreateModel = () => {
+  editingModel.value = null
+  modelForm.value = {
     name: '',
+    type: 'custom',
     description: '',
     dataset_id: undefined,
     base_model: 'yolov8n.pt',
     epochs: 100,
-    batch: 8
+    batch: 8,
+    device: 'cpu'
+  }
+  showModelDialog.value = true
+  loadDatasets()
+}
+
+const cancelModelDialog = () => {
+  showModelDialog.value = false
+  editingModel.value = null
+  modelForm.value = {
+    name: '',
+    type: 'custom',
+    description: '',
+    dataset_id: undefined,
+    base_model: 'yolov8n.pt',
+    epochs: 100,
+    batch: 8,
+    device: 'cpu'
   }
   if (modelFormRef.value) {
     modelFormRef.value.resetFields()
@@ -492,33 +454,52 @@ const handleImportModel = async () => {
   })
 }
 
-const handleCreate = async () => {
+const handleSaveModel = async () => {
   if (!modelFormRef.value) return
   
   await modelFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        creating.value = true
-        
-        // 创建模型并保存训练参数
-        const createdModelResponse: any = await modelApi.createModel({
-          name: newModel.value.name,
-          type: 'custom',
-          description: newModel.value.description,
-          dataset_id: newModel.value.dataset_id,
-          base_model: newModel.value.base_model,
-          epochs: newModel.value.epochs,
-          batch: newModel.value.batch,
-          imgsz: 640
-        })
-        
-        ElMessage.success('模型创建成功，可以在模型列表中查看并开始训练')
-        cancelCreate()
+        if (editingModel.value) {
+          // 编辑模型
+          updating.value = true
+          await modelApi.updateModel(editingModel.value.id, {
+            name: modelForm.value.name,
+            type: modelForm.value.type,
+            description: modelForm.value.description,
+            training_params: {
+              dataset_id: modelForm.value.dataset_id,
+              base_model: modelForm.value.base_model,
+              epochs: modelForm.value.epochs,
+              batch: modelForm.value.batch,
+              imgsz: 640,
+              device: modelForm.value.device
+            }
+          })
+          ElMessage.success('模型更新成功')
+        } else {
+          // 创建模型
+          creating.value = true
+          await modelApi.createModel({
+            name: modelForm.value.name,
+            type: 'custom',
+            description: modelForm.value.description,
+            dataset_id: modelForm.value.dataset_id,
+            base_model: modelForm.value.base_model,
+            epochs: modelForm.value.epochs,
+            batch: modelForm.value.batch,
+            imgsz: 640,
+            device: modelForm.value.device
+          })
+          ElMessage.success('模型创建成功，可以在模型列表中查看并开始训练')
+        }
+        cancelModelDialog()
         loadModels()
       } catch (error: any) {
-        ElMessage.error(error.response?.data?.message || error.message || '创建模型失败')
+        ElMessage.error(error.response?.data?.message || error.message || (editingModel.value ? '更新模型失败' : '创建模型失败'))
       } finally {
         creating.value = false
+        updating.value = false
       }
     }
   })
@@ -545,69 +526,21 @@ const deleteModel = async (id: number) => {
   }
 }
 
-const editModel = (model: Model) => {
+const handleEdit = (model: Model) => {
   editingModel.value = model
   const trainingParams = model.training_params || {}
-  editModelForm.value = {
+  modelForm.value = {
     name: model.name,
     type: model.type || 'custom',
     description: model.description || '',
     dataset_id: trainingParams.dataset_id,
     base_model: trainingParams.base_model || 'yolov8n.pt',
     epochs: trainingParams.epochs || 100,
-    batch: trainingParams.batch || 8
+    batch: trainingParams.batch || 8,
+    device: trainingParams.device || 'cpu'
   }
-  showEditDialog.value = true
+  showModelDialog.value = true
   loadDatasets()
-}
-
-const cancelEdit = () => {
-  showEditDialog.value = false
-  editingModel.value = null
-  editModelForm.value = {
-    name: '',
-    type: 'custom',
-    description: '',
-    dataset_id: undefined,
-    base_model: 'yolov8n.pt',
-    epochs: 100,
-    batch: 8
-  }
-  if (editFormRef.value) {
-    editFormRef.value.resetFields()
-  }
-}
-
-const handleUpdateModel = async () => {
-  if (!editFormRef.value || !editingModel.value) return
-
-  await editFormRef.value.validate(async (valid) => {
-    if (valid) {
-      try {
-        updating.value = true
-        await modelApi.updateModel(editingModel.value!.id, {
-          name: editModelForm.value.name,
-          type: editModelForm.value.type,
-          description: editModelForm.value.description,
-          training_params: {
-            dataset_id: editModelForm.value.dataset_id,
-            base_model: editModelForm.value.base_model,
-            epochs: editModelForm.value.epochs,
-            batch: editModelForm.value.batch,
-            imgsz: 640
-          }
-        })
-        
-        ElMessage.success('模型更新成功')
-        cancelEdit()
-        loadModels()
-      } catch (error: any) {
-        ElMessage.error(error.response?.data?.message || error.message || '更新模型失败')
-      } finally {
-        updating.value = false
-      }
-    }
-  })
 }
 
 const handleTrain = async (model: Model) => {

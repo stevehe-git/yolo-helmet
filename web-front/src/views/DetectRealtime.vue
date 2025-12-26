@@ -121,15 +121,19 @@
               </template>
               <div class="stats">
                 <div class="stat-item">
-                  <span class="label">总检测数:</span>
+                  <span class="label">总帧数:</span>
                   <span class="value">{{ stats.total }}</span>
                 </div>
                 <div class="stat-item">
-                  <span class="label">佩戴安全帽:</span>
+                  <span class="label">检测到目标帧数:</span>
+                  <span class="value">{{ stats.detectedFrames }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="label">佩戴安全帽帧数:</span>
                   <span class="value success">{{ stats.withHelmet }}</span>
                 </div>
                 <div class="stat-item">
-                  <span class="label">未佩戴安全帽:</span>
+                  <span class="label">未佩戴安全帽帧数:</span>
                   <span class="value danger">{{ stats.withoutHelmet }}</span>
                 </div>
                 <div class="stat-item">
@@ -183,9 +187,10 @@ const stopping = ref(false)
 const confidenceThreshold = ref(0.25) // 默认置信度阈值
 const detectionFps = ref(5) // 默认检测帧率：5 FPS
 const stats = ref({
-  total: 0,
-  withHelmet: 0,
-  withoutHelmet: 0
+  total: 0,  // 总共处理的帧数
+  withHelmet: 0,  // 检测到佩戴安全帽的帧数
+  withoutHelmet: 0,  // 检测到未佩戴安全帽的帧数
+  detectedFrames: 0  // 有检测结果的帧数（detections.length > 0）
 })
 const recentDetections = ref<Array<{
   time: string
@@ -197,8 +202,8 @@ let stream: MediaStream | null = null
 let frameInterval: number | null = null
 
 const detectionRate = computed(() => {
-  if (stats.value.total === 0) return 0
-  return ((stats.value.withHelmet / stats.value.total) * 100).toFixed(1)
+  if (stats.value.total === 0) return '0.0'
+  return ((stats.value.detectedFrames / stats.value.total) * 100).toFixed(1)
 })
 
 const handleModelChange = (modelId: number | undefined) => {
@@ -251,6 +256,10 @@ const startDetection = async () => {
     return
   }
 
+  // 清空检测统计数据
+  stats.value = { total: 0, withHelmet: 0, withoutHelmet: 0, detectedFrames: 0 }
+  recentDetections.value = []
+
   starting.value = true
   try {
     // Request camera access
@@ -260,7 +269,7 @@ const startDetection = async () => {
     }
 
     // Start backend detection with confidence threshold
-    await detectApi.startRealtime(selectedModelId.value, confidenceThreshold.value)
+    await detectApi.startRealtime(selectedModelId.value, confidenceThreshold.value, detectionFps.value)
 
     isRunning.value = true
     startFrameCapture()
@@ -350,14 +359,23 @@ const startFrameCapture = () => {
         const response = await detectApi.detectRealtimeFrame(formData)
         const result = response.data || response
         
-        // Update stats
-        if (result.detections && Array.isArray(result.detections)) {
+        // 更新统计：每处理一帧，total加1
+        stats.value.total++
+        
+        // Update stats based on frame detection results
+        if (result.detections && Array.isArray(result.detections) && result.detections.length > 0) {
+          // 这一帧有检测结果
+          stats.value.detectedFrames++
+          
+          // 检查这一帧是否有佩戴安全帽或未佩戴安全帽
+          let hasWithHelmet = false
+          let hasWithoutHelmet = false
+          
           result.detections.forEach((detection: any) => {
-            stats.value.total++
             if (detection.class === 'with_helmet') {
-              stats.value.withHelmet++
-            } else {
-              stats.value.withoutHelmet++
+              hasWithHelmet = true
+            } else if (detection.class === 'without_helmet') {
+              hasWithoutHelmet = true
             }
             
             // Add to recent detections
@@ -371,6 +389,14 @@ const startFrameCapture = () => {
               recentDetections.value.pop()
             }
           })
+          
+          // 统计帧数（不是目标数）
+          if (hasWithHelmet) {
+            stats.value.withHelmet++
+          }
+          if (hasWithoutHelmet) {
+            stats.value.withoutHelmet++
+          }
         }
 
         // Draw result on canvas with detections
@@ -416,7 +442,7 @@ const startFrameCapture = () => {
 }
 
 const clearCanvas = () => {
-  stats.value = { total: 0, withHelmet: 0, withoutHelmet: 0 }
+  stats.value = { total: 0, withHelmet: 0, withoutHelmet: 0, detectedFrames: 0 }
   recentDetections.value = []
 }
 
@@ -471,7 +497,7 @@ onUnmounted(() => {
 
 .confidence-label {
   color: #606266;
-  font-size: 26px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
@@ -584,7 +610,7 @@ onUnmounted(() => {
 }
 
 .detection-confidence {
-  font-size: 26px;
+  font-size: 12px;
   color: #606266;
 }
 </style>

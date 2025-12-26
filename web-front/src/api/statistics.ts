@@ -8,6 +8,9 @@ export interface Statistics {
   daily_stats: {
     date: string
     count: number
+    image: number
+    video: number
+    realtime: number
   }[]
 }
 
