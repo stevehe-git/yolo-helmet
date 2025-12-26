@@ -20,15 +20,24 @@ class DetectionService:
     
     def detect_image(self, image_path_or_array):
         """Detect helmets in an image"""
-        results = self.model(image_path_or_array, conf=Config.CONFIDENCE_THRESHOLD, iou=Config.IOU_THRESHOLD)
+        try:
+            results = self.model(image_path_or_array, conf=Config.CONFIDENCE_THRESHOLD, iou=Config.IOU_THRESHOLD, task='detect')
+        except Exception as e:
+            # 如果指定task失败，尝试不指定task
+            print(f"Warning: Failed with task='detect', trying without task: {str(e)}")
+            results = self.model(image_path_or_array, conf=Config.CONFIDENCE_THRESHOLD, iou=Config.IOU_THRESHOLD)
         
         detections = []
         with_helmet = 0
         without_helmet = 0
         
         for result in results:
+            if result.boxes is None or len(result.boxes) == 0:
+                continue
             boxes = result.boxes
             for box in boxes:
+                if box.cls is None or len(box.cls) == 0:
+                    continue
                 cls = int(box.cls[0])
                 conf = float(box.conf[0])
                 bbox = box.xyxy[0].tolist()
@@ -60,29 +69,39 @@ class DetectionService:
     
     def _draw_detections(self, image_path_or_array, detections):
         """Draw bounding boxes on image"""
-        if isinstance(image_path_or_array, (str, Path)):
-            img = cv2.imread(str(image_path_or_array))
-        else:
-            img = image_path_or_array
-        
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
-        for det in detections:
-            x1, y1, x2, y2 = map(int, det['bbox'])
-            color = (0, 255, 0) if det['class'] == 'with_helmet' else (255, 0, 0)
+        try:
+            if isinstance(image_path_or_array, (str, Path)):
+                img = cv2.imread(str(image_path_or_array))
+                if img is None:
+                    raise ValueError(f"无法读取图片: {image_path_or_array}")
+            else:
+                img = image_path_or_array
+                if img is None:
+                    raise ValueError("图片数组为空")
             
-            cv2.rectangle(img_rgb, (x1, y1), (x2, y2), color, 2)
-            label = f"{det['class']} {det['confidence']:.2f}"
-            cv2.putText(img_rgb, label, (x1, y1 - 10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-        
-        # Convert to base64
-        pil_img = Image.fromarray(img_rgb)
-        buff = BytesIO()
-        pil_img.save(buff, format='JPEG')
-        img_str = base64.b64encode(buff.getvalue()).decode()
-        
-        return img_str
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            
+            for det in detections:
+                x1, y1, x2, y2 = map(int, det['bbox'])
+                color = (0, 255, 0) if det['class'] == 'with_helmet' else (255, 0, 0)
+                
+                cv2.rectangle(img_rgb, (x1, y1), (x2, y2), color, 2)
+                label = f"{det['class']} {det['confidence']:.2f}"
+                cv2.putText(img_rgb, label, (x1, y1 - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            
+            # Convert to base64
+            pil_img = Image.fromarray(img_rgb)
+            buff = BytesIO()
+            pil_img.save(buff, format='JPEG')
+            img_str = base64.b64encode(buff.getvalue()).decode()
+            
+            return img_str
+        except Exception as e:
+            print(f"Error in _draw_detections: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def detect_video(self, video_path, output_path=None):
         """Detect helmets in a video"""

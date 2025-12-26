@@ -66,8 +66,15 @@ def detect_image():
         return jsonify(result), 200
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         # 模型相关错误
+        import traceback
+        print(f"Model error in detect_image: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({'message': f'模型错误: {str(e)}'}), 400
     except Exception as e:
+        # 其他错误，记录详细日志
+        import traceback
+        print(f"Detection error in detect_image: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({'message': f'检测失败: {str(e)}'}), 500
     finally:
         # Clean up uploaded file

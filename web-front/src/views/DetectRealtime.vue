@@ -34,7 +34,7 @@
             style="margin-top: 10px; width: 250px"
           >
             <template #default>
-              <span>请先在模型管理中创建或上传模型</span>
+              <span>请先在模型管理中发布模型</span>
             </template>
           </el-alert>
         </div>
