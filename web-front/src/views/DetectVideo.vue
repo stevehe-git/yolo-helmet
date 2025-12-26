@@ -34,7 +34,7 @@
             style="margin-top: 10px; width: 250px"
           >
             <template #default>
-              <span>请先在模型管理中创建或上传模型</span>
+              <span>请先在模型管理中发布模型</span>
             </template>
           </el-alert>
         </div>
@@ -262,7 +262,9 @@ const handleDetect = async () => {
 
 onMounted(async () => {
   try {
-    models.value = await modelApi.getModels()
+    // 只获取已发布的模型
+    const response: any = await modelApi.getModels(undefined, 'published')
+    models.value = Array.isArray(response) ? response : response.data || []
   } catch (error) {
     console.error('Failed to load models:', error)
   }

@@ -345,7 +345,9 @@ const clearCanvas = () => {
 
 onMounted(async () => {
   try {
-    models.value = await modelApi.getModels()
+    // 只获取已发布的模型
+    const response: any = await modelApi.getModels(undefined, 'published')
+    models.value = Array.isArray(response) ? response : response.data || []
   } catch (error) {
     console.error('Failed to load models:', error)
   }
