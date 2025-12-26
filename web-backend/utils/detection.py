@@ -8,24 +8,26 @@ from pathlib import Path
 from config import Config
 
 class DetectionService:
-    def __init__(self, model_path=None):
+    def __init__(self, model_path=None, confidence_threshold=None):
         if model_path is None:
-            model_path = Config.MODELS_FOLDER / Config.DEFAULT_MODEL
-            if not Path(model_path).exists():
-                # Download default model if not exists
-                model_path = Config.DEFAULT_MODEL
+            # 不再使用默认模型，必须明确指定模型路径
+            raise ValueError('必须指定模型路径，不能使用默认模型')
         
         self.model = YOLO(str(model_path))
         self.class_names = {0: 'with_helmet', 1: 'without_helmet'}
+        # 支持动态置信度阈值
+        self.confidence_threshold = confidence_threshold if confidence_threshold is not None else Config.CONFIDENCE_THRESHOLD
     
-    def detect_image(self, image_path_or_array):
+    def detect_image(self, image_path_or_array, confidence=None):
         """Detect helmets in an image"""
+        # 使用传入的置信度或实例的置信度阈值
+        conf_threshold = confidence if confidence is not None else self.confidence_threshold
         try:
-            results = self.model(image_path_or_array, conf=Config.CONFIDENCE_THRESHOLD, iou=Config.IOU_THRESHOLD, task='detect')
+            results = self.model(image_path_or_array, conf=conf_threshold, iou=Config.IOU_THRESHOLD, task='detect')
         except Exception as e:
             # 如果指定task失败，尝试不指定task
             print(f"Warning: Failed with task='detect', trying without task: {str(e)}")
-            results = self.model(image_path_or_array, conf=Config.CONFIDENCE_THRESHOLD, iou=Config.IOU_THRESHOLD)
+            results = self.model(image_path_or_array, conf=conf_threshold, iou=Config.IOU_THRESHOLD)
         
         detections = []
         with_helmet = 0

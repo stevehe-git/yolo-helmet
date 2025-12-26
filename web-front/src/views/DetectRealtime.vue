@@ -41,23 +41,39 @@
       </template>
 
       <div class="control-panel">
-        <el-button
-          type="primary"
-          :disabled="isRunning"
-          @click="startDetection"
-          :loading="starting"
-        >
-          开始检测
-        </el-button>
-        <el-button
-          type="danger"
-          :disabled="!isRunning"
-          @click="stopDetection"
-          :loading="stopping"
-        >
-          停止检测
-        </el-button>
-        <el-button @click="clearCanvas">清除画面</el-button>
+        <div class="control-group">
+          <el-button
+            type="primary"
+            :disabled="isRunning"
+            @click="startDetection"
+            :loading="starting"
+          >
+            开始检测
+          </el-button>
+          <el-button
+            type="danger"
+            :disabled="!isRunning"
+            @click="stopDetection"
+            :loading="stopping"
+          >
+            停止检测
+          </el-button>
+          <el-button @click="clearCanvas">清除画面</el-button>
+        </div>
+        <div class="confidence-control">
+          <span class="confidence-label">置信度阈值:</span>
+          <el-slider
+            v-model="confidenceThreshold"
+            :min="0.1"
+            :max="1.0"
+            :step="0.05"
+            :disabled="isRunning"
+            :format-tooltip="(val: number) => `${(val * 100).toFixed(0)}%`"
+            style="width: 200px; margin: 0 10px;"
+            @change="handleConfidenceChange"
+          />
+          <span class="confidence-value">{{ (confidenceThreshold * 100).toFixed(0) }}%</span>
+        </div>
       </div>
 
       <div class="video-section">
@@ -148,6 +164,7 @@ const canvasElement = ref<HTMLCanvasElement | null>(null)
 const isRunning = ref(false)
 const starting = ref(false)
 const stopping = ref(false)
+const confidenceThreshold = ref(0.25) // 默认置信度阈值
 const stats = ref({
   total: 0,
   withHelmet: 0,
@@ -225,8 +242,8 @@ const startDetection = async () => {
       videoElement.value.srcObject = stream
     }
 
-    // Start backend detection
-    await detectApi.startRealtime(selectedModelId.value)
+    // Start backend detection with confidence threshold
+    await detectApi.startRealtime(selectedModelId.value, confidenceThreshold.value)
 
     isRunning.value = true
     startFrameCapture()
@@ -281,12 +298,19 @@ const stopDetection = async () => {
   }
 }
 
+const handleConfidenceChange = () => {
+  // 置信度改变时，如果正在运行，会在下一帧自动应用新阈值
+  if (isRunning.value) {
+    ElMessage.info('置信度已更新，将在下一帧应用')
+  }
+}
+
 const startFrameCapture = () => {
   frameInterval = window.setInterval(async () => {
     if (!videoElement.value || !canvasElement.value || !isRunning.value) return
 
     try {
-      const response = await detectApi.getRealtimeFrame()
+      const response = await detectApi.getRealtimeFrame(confidenceThreshold.value)
       const result = response.data || response
       
       // Update stats
@@ -380,7 +404,32 @@ onUnmounted(() => {
 .control-panel {
   margin-bottom: 20px;
   display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.control-group {
+  display: flex;
   gap: 10px;
+}
+
+.confidence-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.confidence-label {
+  color: #606266;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.confidence-value {
+  color: #409EFF;
+  font-weight: bold;
+  min-width: 50px;
+  text-align: right;
 }
 
 .video-section {

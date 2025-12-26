@@ -41,8 +41,13 @@ export const detectApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 300000 // 5 minutes for video processing
   }),
-  startRealtime: (modelId?: number) => api.post('/detect/realtime/start', { model_id: modelId }),
+  startRealtime: (modelId?: number, confidence?: number) => api.post('/detect/realtime/start', { 
+    model_id: modelId,
+    confidence: confidence
+  }),
   stopRealtime: () => api.post('/detect/realtime/stop'),
-  getRealtimeFrame: () => api.get<{ image: string; detections: Detection[] }>('/detect/realtime/frame')
+  getRealtimeFrame: (confidence?: number) => api.get<{ image: string; detections: Detection[] }>('/detect/realtime/frame', {
+    params: { confidence: confidence }
+  })
 }
 

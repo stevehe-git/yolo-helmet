@@ -60,11 +60,28 @@
       </el-upload>
 
       <div v-if="selectedFile" class="file-info">
-        <p>已选择文件: {{ selectedFile.name }}</p>
-        <el-button type="primary" @click="handleDetect" :loading="detecting">
-          开始检测
-        </el-button>
-        <el-button @click="clearFile">清除</el-button>
+        <div class="file-info-left">
+          <p>已选择文件: {{ selectedFile.name }}</p>
+          <div class="confidence-control">
+            <span class="confidence-label">置信度阈值:</span>
+            <el-slider
+              v-model="confidenceThreshold"
+              :min="0.1"
+              :max="1.0"
+              :step="0.05"
+              :disabled="detecting"
+              :format-tooltip="(val: number) => `${(val * 100).toFixed(0)}%`"
+              style="width: 200px; margin: 0 10px;"
+            />
+            <span class="confidence-value">{{ (confidenceThreshold * 100).toFixed(0) }}%</span>
+          </div>
+        </div>
+        <div class="file-info-right">
+          <el-button type="primary" @click="handleDetect" :loading="detecting">
+            开始检测
+          </el-button>
+          <el-button @click="clearFile">清除</el-button>
+        </div>
       </div>
 
       <div v-if="detectResult" class="result-section">
@@ -133,6 +150,7 @@ const models = ref<Model[]>([])
 const selectedModelId = ref<number | undefined>()
 const selectedFile = ref<File | null>(null)
 const detecting = ref(false)
+const confidenceThreshold = ref(0.25) // 默认置信度阈值
 const detectResult = ref<DetectResult | null>(null)
 
 const handleFileChange = (file: UploadFile) => {
@@ -158,37 +176,41 @@ const handleModelChange = (modelId: number | undefined) => {
 }
 
 const validateModel = async (): Promise<boolean> => {
-  if (selectedModelId.value) {
-    try {
-      const model = models.value.find(m => m.id === selectedModelId.value)
-      if (!model) {
-        ElMessage.error('选择的模型不存在，请重新选择')
-        return false
-      }
-      
-      // 检查模型是否训练完成（通用模型默认是completed状态，不需要metrics）
-      if (model.status !== 'completed' && model.status !== 'published') {
-        try {
-          await ElMessageBox.confirm(
-            `模型"${model.name}"尚未训练完成，是否继续使用？`,
-            '模型未训练',
-            {
-              confirmButtonText: '继续使用',
-              cancelButtonText: '取消',
-              type: 'warning'
-            }
-          )
-        } catch (error: any) {
-          if (error === 'cancel') {
-            selectedModelId.value = undefined
-          }
-          return false
-        }
-      }
-    } catch (error) {
-      ElMessage.error('模型验证失败')
+  // 必须选择模型
+  if (!selectedModelId.value) {
+    ElMessage.warning('请先选择模型')
+    return false
+  }
+  
+  try {
+    const model = models.value.find(m => m.id === selectedModelId.value)
+    if (!model) {
+      ElMessage.error('选择的模型不存在，请重新选择')
       return false
     }
+    
+    // 检查模型是否训练完成（通用模型默认是completed状态，不需要metrics）
+    if (model.status !== 'completed' && model.status !== 'published') {
+      try {
+        await ElMessageBox.confirm(
+          `模型"${model.name}"尚未训练完成，是否继续使用？`,
+          '模型未训练',
+          {
+            confirmButtonText: '继续使用',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch (error: any) {
+        if (error === 'cancel') {
+          selectedModelId.value = undefined
+        }
+        return false
+      }
+    }
+  } catch (error) {
+    ElMessage.error('模型验证失败')
+    return false
   }
   return true
 }
@@ -209,12 +231,13 @@ const handleDetect = async () => {
   try {
     const formData = new FormData()
     formData.append('image', selectedFile.value)
-    if (selectedModelId.value) {
-      formData.append('model_id', selectedModelId.value.toString())
-    }
+    // 验证模型后，selectedModelId.value 一定存在
+    formData.append('model_id', selectedModelId.value!.toString())
+    formData.append('confidence', confidenceThreshold.value.toString())
 
-    const result = await detectApi.detectImage(formData)
-    detectResult.value = result
+    const response = await detectApi.detectImage(formData)
+    // 响应拦截器已经返回了 response.data，所以直接使用 response
+    detectResult.value = response as unknown as DetectResult
     ElMessage.success('检测完成')
   } catch (error: any) {
     const errorMessage = error.response?.data?.message || error.message || '检测失败'
@@ -267,8 +290,40 @@ onMounted(async () => {
   background: #f5f7fa;
   border-radius: 4px;
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 15px;
+}
+
+.file-info-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.file-info-right {
+  display: flex;
+  gap: 10px;
+}
+
+.confidence-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.confidence-label {
+  color: #606266;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.confidence-value {
+  color: #409EFF;
+  font-weight: bold;
+  min-width: 50px;
+  text-align: right;
 }
 
 .result-section {

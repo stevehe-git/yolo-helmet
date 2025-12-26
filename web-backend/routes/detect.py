@@ -39,6 +39,12 @@ def detect_image():
         return jsonify({'message': 'No file selected'}), 400
     
     model_id = request.form.get('model_id', type=int)
+    if model_id is None:
+        return jsonify({'message': '请选择模型'}), 400
+    
+    confidence = request.form.get('confidence', type=float)
+    if confidence is None:
+        confidence = Config.CONFIDENCE_THRESHOLD
     user = get_current_user()
     
     # Save uploaded file
@@ -49,7 +55,7 @@ def detect_image():
     try:
         # Perform detection
         service = get_detection_service(model_id)
-        result = service.detect_image(str(filepath))
+        result = service.detect_image(str(filepath), confidence=confidence)
         
         # Save detection record
         detection = Detection(
@@ -92,6 +98,12 @@ def detect_video():
         return jsonify({'message': 'No file selected'}), 400
     
     model_id = request.form.get('model_id', type=int)
+    if model_id is None:
+        return jsonify({'message': '请选择模型'}), 400
+    
+    confidence = request.form.get('confidence', type=float)
+    if confidence is None:
+        confidence = Config.CONFIDENCE_THRESHOLD
     user = get_current_user()
     
     # Save uploaded file
@@ -102,6 +114,8 @@ def detect_video():
     try:
         # Perform detection
         service = get_detection_service(model_id)
+        # 设置置信度阈值
+        service.confidence_threshold = float(confidence)
         output_path = Config.UPLOAD_FOLDER / 'results' / f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         result = service.detect_video(str(filepath), str(output_path))
         
@@ -131,14 +145,21 @@ def detect_video():
 @detect_bp.route('/realtime/start', methods=['POST'])
 @login_required
 def start_realtime():
-    global realtime_active
+    global realtime_active, detection_service
     data = request.get_json()
     model_id = data.get('model_id') if data else None
+    confidence = data.get('confidence', 0.25) if data else 0.25  # 默认0.25
     
     try:
-        # 验证模型
+        # 验证模型并初始化检测服务
         if model_id:
-            get_detection_service(model_id)
+            detection_service = get_detection_service(model_id)
+        else:
+            detection_service = get_detection_service()
+        
+        # 设置置信度阈值
+        if detection_service:
+            detection_service.confidence_threshold = float(confidence)
         
         realtime_active = True
         return jsonify({'message': 'Realtime detection started'}), 200
@@ -157,9 +178,14 @@ def stop_realtime():
 @detect_bp.route('/realtime/frame', methods=['GET'])
 @login_required
 def get_realtime_frame():
-    global realtime_active
+    global realtime_active, detection_service
     if not realtime_active:
         return jsonify({'message': 'Realtime detection not active'}), 400
+    
+    # 获取置信度参数
+    confidence = request.args.get('confidence', type=float)
+    if confidence is not None and detection_service:
+        detection_service.confidence_threshold = float(confidence)
     
     # In a real implementation, this would capture from camera
     # For now, return empty result
