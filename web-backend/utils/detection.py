@@ -119,19 +119,32 @@ class DetectionService:
         if output_path is None:
             output_path = Config.UPLOAD_FOLDER / 'results' / f'result_{Path(video_path).stem}.mp4'
         
-        # 使用H.264编码（更兼容，支持更多浏览器）
-        # 尝试使用更好的编码格式，如果失败则回退到mp4v
-        fourcc = cv2.VideoWriter_fourcc(*'H264')  # H.264编码，更好的兼容性
+        # 使用更兼容的编码格式
+        # 优先尝试使用XVID或X264，这些格式在浏览器中兼容性更好
         video_fps = int(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        out = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
         
-        # 如果H.264编码失败，尝试使用mp4v
-        if not out.isOpened():
-            print("Warning: H.264 codec not available, falling back to mp4v")
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # 尝试多种编码格式，找到可用的
+        codecs_to_try = [
+            ('XVID', cv2.VideoWriter_fourcc(*'XVID')),  # XVID编码，浏览器兼容性好
+            ('mp4v', cv2.VideoWriter_fourcc(*'mp4v')),  # MPEG-4编码
+            ('H264', cv2.VideoWriter_fourcc(*'H264')),  # H.264编码
+        ]
+        
+        out = None
+        used_codec = None
+        for codec_name, fourcc in codecs_to_try:
             out = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
+            if out.isOpened():
+                used_codec = codec_name
+                print(f"Using codec: {codec_name}")
+                break
+            else:
+                out.release() if out else None
+        
+        if not out or not out.isOpened():
+            raise RuntimeError(f"Failed to initialize video writer with any codec. Tried: {[c[0] for c in codecs_to_try]}")
         
         # 计算跳帧间隔：根据检测FPS和视频FPS计算
         detection_fps = detection_fps if detection_fps is not None else self.detection_fps
@@ -143,6 +156,7 @@ class DetectionService:
             frame_skip = max(1, int(video_fps / detection_fps))
         
         last_detected_frame = None
+        detected_frame_count = 0  # 已检测的帧数（不是总帧数）
         
         while True:
             ret, frame = cap.read()
@@ -156,9 +170,21 @@ class DetectionService:
                 # 进行检测
                 result = self.detect_image(frame)
                 last_detected_frame = result
+                detected_frame_count += 1
                 
-                # Store every 10th frame result
-                if frame_count % (frame_skip * 10) == 0:
+                # 收集关键帧：确保至少收集6个，均匀分布
+                # 策略：前6个检测帧都收集，或者每检测到一定数量的帧就收集一个
+                should_collect = False
+                if len(frame_results) < 6:
+                    if detected_frame_count <= 6:
+                        # 前6个检测帧都收集
+                        should_collect = True
+                    else:
+                        # 之后每检测到一定数量的帧就收集一个，确保总共收集6个
+                        collect_interval = max(1, detected_frame_count // 6)
+                        should_collect = (detected_frame_count % collect_interval == 0)
+                
+                if should_collect:
                     frame_results.append(result)
                 
                 total_detections += result['stats']['total']

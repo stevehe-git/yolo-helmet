@@ -115,25 +115,31 @@
             <span>检测摘要</span>
           </template>
           <el-row :gutter="20">
-            <el-col :span="6">
+            <el-col :span="4">
               <div class="summary-item">
                 <div class="summary-value">{{ detectResult.summary.total_frames }}</div>
                 <div class="summary-label">总帧数</div>
               </div>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="4">
+              <div class="summary-item">
+                <div class="summary-value" style="color: #E6A23C;">{{ detectResult.frame_results?.length || 0 }}</div>
+                <div class="summary-label">原始关键帧</div>
+              </div>
+            </el-col>
+            <el-col :span="4">
               <div class="summary-item">
                 <div class="summary-value">{{ detectResult.summary.total_detections }}</div>
                 <div class="summary-label">总检测数</div>
               </div>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="4">
               <div class="summary-item">
                 <div class="summary-value success">{{ detectResult.summary.with_helmet }}</div>
                 <div class="summary-label">佩戴安全帽</div>
               </div>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="4">
               <div class="summary-item">
                 <div class="summary-value danger">{{ detectResult.summary.without_helmet }}</div>
                 <div class="summary-label">未佩戴安全帽</div>
@@ -166,7 +172,7 @@
             <span>关键帧检测结果</span>
           </template>
           <el-row :gutter="20">
-            <el-col :span="8" v-for="(frame, index) in detectResult.frame_results.slice(0, 6)" :key="index">
+            <el-col :span="8" v-for="(frame, index) in filteredFrameResults" :key="index">
               <div class="frame-result">
                 <img :src="`data:image/jpeg;base64,${frame.image}`" alt="Frame" />
                 <div class="frame-stats">
@@ -177,6 +183,7 @@
               </div>
             </el-col>
           </el-row>
+          <el-empty v-if="filteredFrameResults.length === 0" description="没有检测到任何目标" />
         </el-card>
       </div>
     </el-card>
@@ -184,7 +191,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { detectApi, type VideoDetectResult } from '../api/detect'
 import { modelApi, type Model } from '../api/model'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -199,6 +206,14 @@ const confidenceThreshold = ref(0.25) // 默认置信度阈值
 const detectionFps = ref(10) // 默认检测帧率：10 FPS
 const progress = ref(0)
 const detectResult = ref<VideoDetectResult | null>(null)
+
+// 过滤掉检测数为0的帧
+const filteredFrameResults = computed(() => {
+  if (!detectResult.value || !detectResult.value.frame_results) {
+    return []
+  }
+  return detectResult.value.frame_results.filter(frame => frame.stats.total > 0)
+})
 
 const handleFileChange = (file: UploadFile) => {
   selectedFile.value = file.raw as File
@@ -238,8 +253,13 @@ const handleVideoError = (event: any) => {
   console.error('视频加载失败:', {
     error,
     src: video.src,
+    currentSrc: video.currentSrc,
     networkState: video.networkState,
-    readyState: video.readyState
+    readyState: video.readyState,
+    sources: Array.from(video.querySelectorAll('source')).map(s => ({
+      src: s.src,
+      type: s.type
+    }))
   })
   
   ElMessage.error(errorMessage)
