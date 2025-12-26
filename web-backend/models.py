@@ -106,6 +106,7 @@ class Dataset(db.Model):
     train_count = db.Column(db.Integer, default=0)  # 训练集数量
     val_count = db.Column(db.Integer, default=0)  # 验证集数量
     test_count = db.Column(db.Integer, default=0)  # 测试集数量
+    error_reason = db.Column(db.Text)  # 验证失败原因
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def to_dict(self):
@@ -119,6 +120,7 @@ class Dataset(db.Model):
             'train_count': self.train_count,
             'val_count': self.val_count,
             'test_count': self.test_count,
+            'error_reason': self.error_reason,  # 验证失败原因
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 

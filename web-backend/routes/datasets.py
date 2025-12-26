@@ -357,6 +357,11 @@ def upload_dataset(dataset_id):
         # 验证数据集结构
         errors, warnings = validate_dataset_structure(dataset_dir)
         if errors:
+            # 保存验证失败原因到数据库
+            error_reason = '；'.join(errors)  # 用分号连接多个错误
+            dataset.status = 'failed'
+            dataset.error_reason = error_reason
+            db.session.commit()
             # 如果有必需目录缺失，返回错误
             return jsonify({
                 'message': '数据集格式不符合要求',
@@ -377,7 +382,12 @@ def upload_dataset(dataset_id):
         dataset.train_count = train_count
         dataset.val_count = val_count
         dataset.test_count = test_count
-        dataset.status = 'validated' if total_count > 0 else 'failed'
+        if total_count > 0:
+            dataset.status = 'validated'
+            dataset.error_reason = None  # 验证通过，清除错误原因
+        else:
+            dataset.status = 'failed'
+            dataset.error_reason = '数据集中没有找到图片文件'
         
         db.session.commit()
         

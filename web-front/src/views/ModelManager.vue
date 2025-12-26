@@ -12,6 +12,10 @@
           <el-icon><Plus /></el-icon>
           创建模型
         </el-button>
+        <el-button type="success" @click="showImportDialog = true">
+          <el-icon><Upload /></el-icon>
+          导入模型
+        </el-button>
       </div>
     </div>
 
@@ -240,6 +244,51 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 导入模型对话框 -->
+    <el-dialog v-model="showImportDialog" title="导入模型" width="600px">
+      <el-form :model="importModelForm" :rules="importModelRules" ref="importFormRef" label-width="120px">
+        <el-form-item label="模型文件" prop="model_file">
+          <el-upload
+            :auto-upload="false"
+            :on-change="handleFileChange"
+            :limit="1"
+            accept=".pt"
+            :file-list="fileList"
+          >
+            <el-button type="primary">
+              <el-icon><Upload /></el-icon>
+              选择文件
+            </el-button>
+            <template #tip>
+              <div class="el-upload__tip">
+                只支持.pt格式的YOLO模型文件，文件大小不超过500MB
+              </div>
+            </template>
+          </el-upload>
+        </el-form-item>
+        <el-form-item label="模型名称" prop="name">
+          <el-input
+            v-model="importModelForm.name"
+            placeholder="请输入模型名称"
+          />
+        </el-form-item>
+        <el-form-item label="模型描述" prop="description">
+          <el-input
+            v-model="importModelForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入模型描述（可选）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="cancelImport">取消</el-button>
+        <el-button type="primary" @click="handleImportModel" :loading="importing">
+          {{ importing ? '导入中...' : '确定导入' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -250,7 +299,7 @@ import { modelApi, type Model } from '../api/model'
 import { datasetApi, type Dataset } from '../api/dataset'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Plus, Refresh, Search, VideoPlay } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, VideoPlay, Upload } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const models = ref<Model[]>([])
@@ -258,10 +307,13 @@ const datasets = ref<Dataset[]>([])
 const loading = ref(false)
 const showCreateDialog = ref(false)
 const showEditDialog = ref(false)
+const showImportDialog = ref(false)
 const modelFormRef = ref<FormInstance>()
 const editFormRef = ref<FormInstance>()
+const importFormRef = ref<FormInstance>()
 const updating = ref(false)
 const creating = ref(false)
+const importing = ref(false)
 const editingModel = ref<Model | null>(null)
 
 const searchForm = ref({
@@ -285,6 +337,19 @@ const editModelForm = ref({
   epochs: 100,
   batch: 8
 })
+
+const importModelForm = ref({
+  name: '',
+  description: '',
+  model_file: null as File | null
+})
+
+const fileList = ref<any[]>([])
+
+const importModelRules: FormRules = {
+  name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
+  model_file: [{ required: true, message: '请选择要导入的模型文件', trigger: 'change' }]
+}
 
 const modelRules: FormRules = {
   name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
@@ -345,6 +410,58 @@ const cancelCreate = () => {
   if (modelFormRef.value) {
     modelFormRef.value.resetFields()
   }
+}
+
+const handleFileChange = (file: any) => {
+  importModelForm.value.model_file = file.raw
+  fileList.value = [file]
+}
+
+const cancelImport = () => {
+  showImportDialog.value = false
+  importModelForm.value = {
+    name: '',
+    description: '',
+    model_file: null
+  }
+  fileList.value = []
+  if (importFormRef.value) {
+    importFormRef.value.resetFields()
+  }
+}
+
+const handleImportModel = async () => {
+  if (!importFormRef.value) return
+  
+  await importFormRef.value.validate(async (valid) => {
+    if (valid) {
+      if (!importModelForm.value.model_file) {
+        ElMessage.warning('请选择要导入的模型文件')
+        return
+      }
+      
+      try {
+        importing.value = true
+        
+        const formData = new FormData()
+        formData.append('model_file', importModelForm.value.model_file)
+        formData.append('name', importModelForm.value.name)
+        if (importModelForm.value.description) {
+          formData.append('description', importModelForm.value.description)
+        }
+        
+        const response: any = await modelApi.importModel(formData)
+        
+        ElMessage.success(response.data?.message || '模型导入成功')
+        cancelImport()
+        loadModels()
+      } catch (error: any) {
+        ElMessage.error(error.response?.data?.message || error.message || '导入模型失败')
+      } finally {
+        importing.value = false
+      }
+    }
+  })
 }
 
 const handleCreateAndTrain = async () => {

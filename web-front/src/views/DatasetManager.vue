@@ -74,10 +74,12 @@
             <span v-else style="color: #909399;">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="120" align="center">
+        <el-table-column label="状态" width="200" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.status === 'validated'" type="success" effect="plain">验证通过</el-tag>
-            <el-tag v-else-if="row.status === 'failed'" type="danger" effect="plain">验证失败</el-tag>
+            <el-tooltip v-else-if="row.status === 'failed'" effect="dark" :content="row.error_reason || '验证失败'" placement="top">
+              <el-tag type="danger" effect="plain">验证失败</el-tag>
+            </el-tooltip>
             <el-tag v-else type="info" effect="plain">待验证</el-tag>
           </template>
         </el-table-column>

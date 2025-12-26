@@ -10,6 +10,7 @@ export interface Dataset {
   train_count?: number
   val_count?: number
   test_count?: number
+  error_reason?: string  // 验证失败原因
   created_at: string
 }
 

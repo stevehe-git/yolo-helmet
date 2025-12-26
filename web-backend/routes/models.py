@@ -141,6 +141,91 @@ def create_model():
     
     return jsonify(model.to_dict()), 201
 
+@models_bp.route('/import', methods=['POST'])
+@admin_required
+def import_model():
+    """导入已有的模型文件"""
+    from werkzeug.utils import secure_filename
+    import shutil
+    
+    # 检查是否有文件上传
+    if 'model_file' not in request.files:
+        return jsonify({'message': '请选择要导入的模型文件'}), 400
+    
+    file = request.files['model_file']
+    if file.filename == '':
+        return jsonify({'message': '请选择要导入的模型文件'}), 400
+    
+    # 验证文件格式
+    if not file.filename.lower().endswith('.pt'):
+        return jsonify({'message': '只支持.pt格式的模型文件'}), 400
+    
+    # 获取表单数据
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip()
+    
+    if not name:
+        return jsonify({'message': '模型名称不能为空'}), 400
+    
+    # 检查模型名称是否已存在
+    existing_model = Model.query.filter_by(name=name).first()
+    if existing_model:
+        return jsonify({'message': f'模型名称"{name}"已存在，请使用其他名称'}), 400
+    
+    try:
+        # 确保模型目录存在
+        Config.MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
+        
+        # 生成安全的文件名
+        safe_filename = secure_filename(f"{name}.pt")
+        target_path = Config.MODELS_FOLDER / safe_filename
+        
+        # 检查目标文件是否已存在
+        if target_path.exists():
+            return jsonify({'message': f'模型文件"{safe_filename}"已存在，请使用其他名称'}), 400
+        
+        # 保存上传的文件
+        file.save(str(target_path))
+        
+        # 验证文件是否成功保存
+        if not target_path.exists():
+            return jsonify({'message': '模型文件保存失败'}), 500
+        
+        # 验证文件是否为有效的YOLO模型（可选，尝试加载）
+        try:
+            test_model = YOLO(str(target_path))
+            # 如果能成功加载，说明是有效的模型文件
+        except Exception as e:
+            # 如果加载失败，删除文件并返回错误
+            target_path.unlink()
+            return jsonify({'message': f'无效的模型文件：{str(e)}'}), 400
+        
+        # 创建模型记录
+        model = Model(
+            name=name,
+            type='custom',
+            path=str(target_path.absolute()),
+            description=description,
+            status='completed'  # 导入的模型直接标记为已完成
+        )
+        
+        db.session.add(model)
+        db.session.commit()
+        
+        return jsonify({
+            'message': '模型导入成功',
+            'model': model.to_dict()
+        }), 201
+        
+    except Exception as e:
+        # 如果出错，尝试清理已保存的文件
+        if target_path.exists():
+            try:
+                target_path.unlink()
+            except:
+                pass
+        return jsonify({'message': f'导入模型失败：{str(e)}'}), 500
+
 @models_bp.route('/<int:model_id>', methods=['PUT'])
 @admin_required
 def update_model(model_id):
