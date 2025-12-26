@@ -17,6 +17,8 @@ class DetectionService:
         self.class_names = {0: 'with_helmet', 1: 'without_helmet'}
         # 支持动态置信度阈值
         self.confidence_threshold = confidence_threshold if confidence_threshold is not None else Config.CONFIDENCE_THRESHOLD
+        # 支持动态检测帧率
+        self.detection_fps = 10  # 默认10 FPS
     
     def detect_image(self, image_path_or_array, confidence=None):
         """Detect helmets in an image"""
@@ -105,7 +107,7 @@ class DetectionService:
             traceback.print_exc()
             raise
     
-    def detect_video(self, video_path, output_path=None):
+    def detect_video(self, video_path, output_path=None, detection_fps=None):
         """Detect helmets in a video"""
         cap = cv2.VideoCapture(str(video_path))
         frame_results = []
@@ -118,10 +120,21 @@ class DetectionService:
             output_path = Config.UPLOAD_FOLDER / 'results' / f'result_{Path(video_path).stem}.mp4'
         
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        video_fps = int(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+        out = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
+        
+        # 计算跳帧间隔：根据检测FPS和视频FPS计算
+        detection_fps = detection_fps if detection_fps is not None else self.detection_fps
+        if detection_fps >= video_fps:
+            # 如果检测FPS大于等于视频FPS，每帧都检测
+            frame_skip = 1
+        else:
+            # 计算跳帧间隔：每N帧检测一次
+            frame_skip = max(1, int(video_fps / detection_fps))
+        
+        last_detected_frame = None
         
         while True:
             ret, frame = cap.read()
@@ -129,19 +142,32 @@ class DetectionService:
                 break
             
             frame_count += 1
-            result = self.detect_image(frame)
             
-            # Store every 10th frame result
-            if frame_count % 10 == 0:
-                frame_results.append(result)
-            
-            total_detections += result['stats']['total']
-            total_with_helmet += result['stats']['with_helmet']
-            total_without_helmet += result['stats']['without_helmet']
-            
-            # Draw on frame and write
-            annotated_frame = self._frame_from_base64(result['image'])
-            out.write(annotated_frame)
+            # 根据跳帧间隔决定是否检测
+            if frame_count % frame_skip == 0:
+                # 进行检测
+                result = self.detect_image(frame)
+                last_detected_frame = result
+                
+                # Store every 10th frame result
+                if frame_count % (frame_skip * 10) == 0:
+                    frame_results.append(result)
+                
+                total_detections += result['stats']['total']
+                total_with_helmet += result['stats']['with_helmet']
+                total_without_helmet += result['stats']['without_helmet']
+                
+                # Draw on frame and write
+                annotated_frame = self._frame_from_base64(result['image'])
+                out.write(annotated_frame)
+            else:
+                # 跳过检测，直接使用上一帧的检测结果（如果有）
+                if last_detected_frame:
+                    annotated_frame = self._frame_from_base64(last_detected_frame['image'])
+                    out.write(annotated_frame)
+                else:
+                    # 第一帧之前，直接写入原始帧
+                    out.write(frame)
         
         cap.release()
         out.release()

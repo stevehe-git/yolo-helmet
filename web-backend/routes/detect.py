@@ -104,6 +104,11 @@ def detect_video():
     confidence = request.form.get('confidence', type=float)
     if confidence is None:
         confidence = Config.CONFIDENCE_THRESHOLD
+    
+    detection_fps = request.form.get('detection_fps', type=int)
+    if detection_fps is None:
+        detection_fps = 10  # 默认10 FPS
+    
     user = get_current_user()
     
     # Save uploaded file
@@ -117,7 +122,7 @@ def detect_video():
         # 设置置信度阈值
         service.confidence_threshold = float(confidence)
         output_path = Config.UPLOAD_FOLDER / 'results' / f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-        result = service.detect_video(str(filepath), str(output_path))
+        result = service.detect_video(str(filepath), str(output_path), detection_fps=detection_fps)
         
         # Save detection record
         detection = Detection(
@@ -149,6 +154,7 @@ def start_realtime():
     data = request.get_json()
     model_id = data.get('model_id') if data else None
     confidence = data.get('confidence', 0.25) if data else 0.25  # 默认0.25
+    fps = data.get('fps', 5) if data else 5  # 默认5 FPS
     
     try:
         # 验证模型并初始化检测服务
@@ -157,9 +163,10 @@ def start_realtime():
         else:
             detection_service = get_detection_service()
         
-        # 设置置信度阈值
+        # 设置置信度阈值和FPS
         if detection_service:
             detection_service.confidence_threshold = float(confidence)
+            detection_service.detection_fps = int(fps)
         
         realtime_active = True
         return jsonify({'message': 'Realtime detection started'}), 200
@@ -182,10 +189,14 @@ def get_realtime_frame():
     if not realtime_active:
         return jsonify({'message': 'Realtime detection not active'}), 400
     
-    # 获取置信度参数
+    # 获取置信度和FPS参数
     confidence = request.args.get('confidence', type=float)
-    if confidence is not None and detection_service:
-        detection_service.confidence_threshold = float(confidence)
+    fps = request.args.get('fps', type=int)
+    if detection_service:
+        if confidence is not None:
+            detection_service.confidence_threshold = float(confidence)
+        if fps is not None:
+            detection_service.detection_fps = int(fps)
     
     # In a real implementation, this would capture from camera
     # For now, return empty result

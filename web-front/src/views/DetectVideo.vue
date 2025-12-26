@@ -75,6 +75,22 @@
             />
             <span class="confidence-value">{{ (confidenceThreshold * 100).toFixed(0) }}%</span>
           </div>
+          <div class="fps-control">
+            <span class="fps-label">检测帧率 (FPS):</span>
+            <el-slider
+              v-model="detectionFps"
+              :min="1"
+              :max="30"
+              :step="1"
+              :disabled="detecting"
+              :format-tooltip="(val: number) => `${val} FPS`"
+              style="width: 200px; margin: 0 10px;"
+            />
+            <span class="fps-value">{{ detectionFps }} FPS</span>
+            <el-tooltip content="降低检测帧率可以减少处理时间，但可能会跳过部分帧" placement="top">
+              <el-icon style="margin-left: 5px; color: #909399; cursor: help;"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
         </div>
         <div class="file-info-right">
           <el-button type="primary" @click="handleDetect" :loading="detecting">
@@ -161,13 +177,14 @@ import { detectApi, type VideoDetectResult } from '../api/detect'
 import { modelApi, type Model } from '../api/model'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { UploadFilled, QuestionFilled } from '@element-plus/icons-vue'
 
 const models = ref<Model[]>([])
 const selectedModelId = ref<number | undefined>()
 const selectedFile = ref<File | null>(null)
 const detecting = ref(false)
 const confidenceThreshold = ref(0.25) // 默认置信度阈值
+const detectionFps = ref(10) // 默认检测帧率：10 FPS
 const progress = ref(0)
 const detectResult = ref<VideoDetectResult | null>(null)
 
@@ -262,6 +279,7 @@ const handleDetect = async () => {
     // 验证模型后，selectedModelId.value 一定存在
     formData.append('model_id', selectedModelId.value!.toString())
     formData.append('confidence', confidenceThreshold.value.toString())
+    formData.append('detection_fps', detectionFps.value.toString())
 
     const response = await detectApi.detectVideo(formData)
     // 响应拦截器已经返回了 response.data，所以直接使用 response

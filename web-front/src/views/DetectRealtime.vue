@@ -74,6 +74,22 @@
           />
           <span class="confidence-value">{{ (confidenceThreshold * 100).toFixed(0) }}%</span>
         </div>
+        <div class="fps-control">
+          <span class="fps-label">检测帧率 (FPS):</span>
+          <el-slider
+            v-model="detectionFps"
+            :min="1"
+            :max="30"
+            :step="1"
+            :disabled="isRunning"
+            :format-tooltip="(val: number) => `${val} FPS`"
+            style="width: 200px; margin: 0 10px;"
+          />
+          <span class="fps-value">{{ detectionFps }} FPS</span>
+          <el-tooltip content="降低检测帧率可以减少处理时间，提高实时性" placement="top">
+            <el-icon style="margin-left: 5px; color: #909399; cursor: help;"><QuestionFilled /></el-icon>
+          </el-tooltip>
+        </div>
       </div>
 
       <div class="video-section">
@@ -165,6 +181,7 @@ const isRunning = ref(false)
 const starting = ref(false)
 const stopping = ref(false)
 const confidenceThreshold = ref(0.25) // 默认置信度阈值
+const detectionFps = ref(5) // 默认检测帧率：5 FPS
 const stats = ref({
   total: 0,
   withHelmet: 0,
@@ -306,11 +323,14 @@ const handleConfidenceChange = () => {
 }
 
 const startFrameCapture = () => {
-  frameInterval = window.setInterval(async () => {
+  // 根据检测帧率计算间隔时间（毫秒）
+  const getInterval = () => Math.max(100, 1000 / detectionFps.value)
+  
+  const captureFrame = async () => {
     if (!videoElement.value || !canvasElement.value || !isRunning.value) return
 
     try {
-      const response = await detectApi.getRealtimeFrame(confidenceThreshold.value)
+      const response = await detectApi.getRealtimeFrame(confidenceThreshold.value, detectionFps.value)
       const result = response.data || response
       
       // Update stats
@@ -362,7 +382,13 @@ const startFrameCapture = () => {
         console.error('Failed to get frame:', error)
       }
     }
-  }, 1000) // Capture every second
+  }
+  
+  // 启动定时器
+  if (frameInterval) {
+    clearInterval(frameInterval)
+  }
+  frameInterval = window.setInterval(captureFrame, getInterval())
 }
 
 const clearCanvas = () => {

@@ -41,13 +41,14 @@ export const detectApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 300000 // 5 minutes for video processing
   }),
-  startRealtime: (modelId?: number, confidence?: number) => api.post('/detect/realtime/start', { 
+  startRealtime: (modelId?: number, confidence?: number, fps?: number) => api.post('/detect/realtime/start', { 
     model_id: modelId,
-    confidence: confidence
+    confidence: confidence,
+    fps: fps
   }),
   stopRealtime: () => api.post('/detect/realtime/stop'),
-  getRealtimeFrame: (confidence?: number) => api.get<{ image: string; detections: Detection[] }>('/detect/realtime/frame', {
-    params: { confidence: confidence }
+  getRealtimeFrame: (confidence?: number, fps?: number) => api.get<{ image: string; detections: Detection[] }>('/detect/realtime/frame', {
+    params: { confidence: confidence, fps: fps }
   })
 }
 
