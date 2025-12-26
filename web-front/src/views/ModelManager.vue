@@ -364,7 +364,7 @@ const editModelRules: FormRules = {
 
 const importModelForm = ref({
   name: '',
-  type: 'custom' as 'general' | 'custom',
+  type: 'general' as 'general' | 'custom',
   description: '',
   model_file: null as File | null
 })
@@ -447,7 +447,7 @@ const cancelImport = () => {
   showImportDialog.value = false
   importModelForm.value = {
     name: '',
-    type: 'custom',
+    type: 'general',
     description: '',
     model_file: null
   }

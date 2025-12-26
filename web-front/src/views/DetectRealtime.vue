@@ -19,7 +19,7 @@
             >
               <span>{{ model.name }}</span>
               <span style="float: right; color: #8492a6; font-size: 13px">
-                {{ model.type === '通用' ? '通用' : '自定义' }}
+                {{ model.type === 'general' ? '通用' : '自定义' }}
                 <el-tag v-if="model.status === 'failed'" type="danger" size="small" style="margin-left: 5px;">训练失败</el-tag>
                 <el-tag v-else-if="model.status !== 'completed' && model.status !== 'published'" type="warning" size="small" style="margin-left: 5px;">未训练</el-tag>
               </span>
@@ -286,28 +286,31 @@ const startFrameCapture = () => {
     if (!videoElement.value || !canvasElement.value || !isRunning.value) return
 
     try {
-      const result = await detectApi.getRealtimeFrame()
+      const response = await detectApi.getRealtimeFrame()
+      const result = response.data || response
       
       // Update stats
-      result.detections.forEach(detection => {
-        stats.value.total++
-        if (detection.class === 'with_helmet') {
-          stats.value.withHelmet++
-        } else {
-          stats.value.withoutHelmet++
-        }
-
-        // Add to recent detections
-        recentDetections.value.unshift({
-          time: new Date().toLocaleTimeString(),
-          type: detection.class === 'with_helmet' ? 'with_helmet' : 'without_helmet',
-          confidence: detection.confidence
+      if (result.detections && Array.isArray(result.detections)) {
+        result.detections.forEach((detection: any) => {
+          stats.value.total++
+          if (detection.class === 'with_helmet') {
+            stats.value.withHelmet++
+          } else {
+            stats.value.withoutHelmet++
+          }
+          
+          // Add to recent detections
+          recentDetections.value.unshift({
+            time: new Date().toLocaleTimeString(),
+            type: detection.class === 'with_helmet' ? 'with_helmet' : 'without_helmet',
+            confidence: detection.confidence
+          })
+          
+          if (recentDetections.value.length > 10) {
+            recentDetections.value.pop()
+          }
         })
-        
-        if (recentDetections.value.length > 10) {
-          recentDetections.value.pop()
-        }
-      })
+      }
 
       // Draw result on canvas (simplified - in real implementation, draw bounding boxes)
       const ctx = canvasElement.value.getContext('2d')

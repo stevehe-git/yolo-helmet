@@ -189,7 +189,30 @@ def import_model():
         Config.MODELS_FOLDER.mkdir(parents=True, exist_ok=True)
         
         # 生成安全的文件名
-        safe_filename = secure_filename(f"{name}.pt")
+        # secure_filename 会清理特殊字符，对于中文会返回空字符串或只保留扩展名
+        # 优先使用上传文件的原始文件名（去掉路径），如果不可用则使用用户输入的模型名称
+        import os
+        import re
+        
+        original_filename = file.filename
+        if original_filename:
+            # 使用上传文件的原始文件名（去掉路径和扩展名）
+            original_base = os.path.splitext(os.path.basename(original_filename))[0]
+            # 清理文件名：移除危险字符，但保留中文字符
+            # 只移除路径分隔符和特殊字符，保留字母、数字、中文、下划线、连字符
+            safe_base = re.sub(r'[^\w\u4e00-\u9fff-]', '_', original_base)
+            if safe_base and safe_base.strip():
+                base_name = safe_base
+            else:
+                # 如果清理后为空，尝试使用用户输入的模型名称
+                safe_base = re.sub(r'[^\w\u4e00-\u9fff-]', '_', name)
+                base_name = safe_base if safe_base and safe_base.strip() else f"model_{model_id if 'model_id' in locals() else 'import'}"
+        else:
+            # 如果没有原始文件名，使用用户输入的模型名称
+            safe_base = re.sub(r'[^\w\u4e00-\u9fff-]', '_', name)
+            base_name = safe_base if safe_base and safe_base.strip() else "model_import"
+        
+        safe_filename = f"{base_name}.pt"
         target_path = Config.MODELS_FOLDER / safe_filename
         
         # 检查目标文件是否已存在
@@ -203,14 +226,38 @@ def import_model():
         if not target_path.exists():
             return jsonify({'message': '模型文件保存失败'}), 500
         
-        # 验证文件是否为有效的YOLO模型（可选，尝试加载）
+        # 验证文件是否为有效的YOLO模型
+        # 注意：某些模型文件（如damoyolo等）可能因为格式或版本差异导致加载失败
+        # 但文件本身可能是有效的，在实际使用时可能可以正常工作
+        validation_warning = None
         try:
+            # 首先检查文件大小（至少应该大于0）
+            file_size = target_path.stat().st_size
+            if file_size == 0:
+                target_path.unlink()
+                return jsonify({'message': '模型文件为空'}), 400
+            
+            # 尝试加载模型进行验证
             test_model = YOLO(str(target_path))
             # 如果能成功加载，说明是有效的模型文件
+            print(f"Successfully validated model file: {target_path}")
         except Exception as e:
-            # 如果加载失败，删除文件并返回错误
-            target_path.unlink()
-            return jsonify({'message': f'无效的模型文件：{str(e)}'}), 400
+            error_msg = str(e)
+            print(f"Warning: Model validation failed for {target_path}: {error_msg}")
+            
+            # 检查是否是格式兼容性问题（如OrderedDict错误通常是版本兼容性问题）
+            if 'OrderedDict' in error_msg or 'attribute' in error_msg.lower():
+                # 这可能是版本兼容性问题，允许导入但记录警告
+                validation_warning = f"模型文件可能存在版本兼容性问题，但在实际使用时可能会正常工作。错误信息：{error_msg}"
+                print(f"Model file may have version compatibility issues, but allowing import")
+            elif 'not a valid' in error_msg.lower() or 'corrupted' in error_msg.lower() or 'cannot read' in error_msg.lower():
+                # 文件损坏或格式完全错误，拒绝导入
+                target_path.unlink()
+                return jsonify({'message': f'无效的模型文件：{error_msg}'}), 400
+            else:
+                # 其他错误，可能是版本兼容性问题，允许导入但记录警告
+                validation_warning = f"模型验证时出现警告：{error_msg}，但在实际使用时可能会正常工作"
+                print(f"Model validation failed with error: {error_msg}, but allowing import")
         
         # 创建模型记录
         # 导入的模型直接标记为已完成（通用模型和自定义模型都是）
@@ -222,6 +269,11 @@ def import_model():
             status='completed'
         )
         
+        # 如果有验证警告，保存到模型的metrics中
+        if validation_warning:
+            model.set_metrics({'validation_warning': validation_warning})
+            print(f"Model imported with validation warning: {validation_warning}")
+        
         db.session.add(model)
         db.session.commit()
         
@@ -232,6 +284,12 @@ def import_model():
             model.set_metrics({'error': '模型文件保存后验证失败'})
             db.session.commit()
             return jsonify({'message': '模型文件保存失败，请重试'}), 500
+        
+        # 为导入的模型创建runs目录结构（用于后续可能的训练数据存储）
+        # 注意：导入的模型本身没有训练数据，但创建目录结构以便后续使用
+        runs_dir = Config.MODELS_FOLDER / 'runs' / f'model_{model.id}'
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Created runs directory for imported model: {runs_dir}")
         
         return jsonify({
             'message': '模型导入成功',
