@@ -41,7 +41,7 @@
         </el-menu-item>
         <el-menu-item index="/console" v-if="isAdmin">
           <el-icon><DataAnalysis /></el-icon>
-          <span>控制台</span>
+          <span>统计</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
