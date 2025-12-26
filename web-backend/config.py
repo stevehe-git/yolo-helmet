@@ -9,6 +9,15 @@ class Config:
     os.makedirs(instance_path, exist_ok=True)
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(instance_path, "yolo_helmet.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # SQLite 连接参数，解决数据库锁定问题
+    # 注意：PRAGMA 设置通过 SQLAlchemy 事件监听器在连接创建时自动应用
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'connect_args': {
+            'timeout': 20,  # 增加超时时间到20秒
+            'check_same_thread': False,  # 允许多线程访问
+        },
+        'pool_pre_ping': True,  # 连接前检查连接是否有效
+    }
     
     # File upload settings
     UPLOAD_FOLDER = Path('uploads')
