@@ -1,6 +1,6 @@
 # YOLO 安全帽检测系统 - 后端
 
-基于 Flask 和 YOLO11n 的施工安全帽检测后端服务。
+基于 Flask 和 YOLO11n 的施工安全帽检测后端服务。支持 CPU/GPU 训练、模型导入、参数调节等高级功能。
 
 ## 技术栈
 
@@ -148,8 +148,9 @@ web-backend/
 - **POST** `/api/detect/image`
 - **请求头**：`Authorization: Bearer <token>`
 - **请求体**：`multipart/form-data`
-  - `image`: 图片文件
-  - `model_id`: 模型ID（可选）
+  - `image`: 图片文件（必需）
+  - `model_id`: 模型ID（必需，仅显示已发布的模型）
+  - `confidence`: 置信度阈值（可选，0-1，默认 0.25）
 - **响应**：
 ```json
 {
@@ -173,34 +174,112 @@ web-backend/
 - **POST** `/api/detect/video`
 - **请求头**：`Authorization: Bearer <token>`
 - **请求体**：`multipart/form-data`
-  - `video`: 视频文件
-  - `model_id`: 模型ID（可选）
-- **响应**：包含检测结果视频 URL、关键帧和统计摘要
+  - `video`: 视频文件（必需）
+  - `model_id`: 模型ID（必需，仅显示已发布的模型）
+  - `confidence`: 置信度阈值（可选，0-1，默认 0.25）
+  - `detection_fps`: 检测帧率（可选，1-30，默认 10）
+- **响应**：包含检测结果视频 URL、关键帧（仅显示有检测结果的帧）和统计摘要
+```json
+{
+  "video_url": "/api/detect/uploads/results/result_xxx.mp4",
+  "frame_results": [
+    {
+      "image": "base64_encoded_image",
+      "detections": [...],
+      "stats": {...}
+    }
+  ],
+  "summary": {
+    "total_detections": 19,
+    "total_frames": 148,
+    "detected_frames": 10,
+    "with_helmet": 8,
+    "without_helmet": 2
+  }
+}
+```
 
 #### 实时检测
 - **POST** `/api/detect/realtime/start` - 启动实时检测
-- **POST** `/api/detect/realtime/stop` - 停止实时检测
-- **GET** `/api/detect/realtime/frame` - 获取实时检测帧
+  - **请求体**：`application/json`
+  ```json
+  {
+    "model_id": 1,
+    "confidence": 0.25,
+    "fps": 5
+  }
+  ```
+- **POST** `/api/detect/realtime/stop` - 停止实时检测（自动保存统计数据到数据库，类型为 'realtime'）
+- **POST** `/api/detect/realtime/frame` - 检测实时帧
+  - **请求体**：`multipart/form-data`
+    - `image`: 图片文件
+    - `confidence`: 置信度阈值（可选）
+    - `fps`: 检测帧率（可选）
 
 ### 模型管理接口（需要管理员权限）
 
 - **GET** `/api/models` - 获取模型列表
+  - 查询参数：`search`（搜索关键词）、`status`（状态筛选）
 - **GET** `/api/models/<id>` - 获取模型详情
 - **POST** `/api/models` - 创建模型
   ```json
   {
     "name": "模型名称",
-    "type": "general" 或 "custom"
+    "type": "custom",
+    "description": "模型描述（可选）",
+    "dataset_id": 1,
+    "base_model": "yolov8n.pt",
+    "epochs": 100,
+    "batch": 8,
+    "imgsz": 640,
+    "device": "cpu" 或 "gpu"
   }
   ```
+- **PUT** `/api/models/<id>` - 更新模型
+  ```json
+  {
+    "name": "模型名称",
+    "type": "general" 或 "custom",
+    "description": "模型描述",
+    "training_params": {
+      "dataset_id": 1,
+      "base_model": "yolov8n.pt",
+      "epochs": 100,
+      "batch": 8,
+      "imgsz": 640,
+      "device": "cpu" 或 "gpu"
+    }
+  }
+  ```
+- **POST** `/api/models/import` - 导入模型
+  - **请求体**：`multipart/form-data`
+    - `model_file`: `.pt` 模型文件
+    - `name`: 模型名称
+    - `type`: 模型类型（"general" 或 "custom"，默认 "general"）
+    - `description`: 模型描述（可选）
+- **POST** `/api/models/<id>/publish` - 发布模型
+- **POST** `/api/models/<id>/unpublish` - 取消发布模型
 - **DELETE** `/api/models/<id>` - 删除模型
 - **POST** `/api/models/train` - 训练模型
+  ```json
+  {
+    "model_id": 1,
+    "dataset_id": 1（可选，使用模型保存的参数）,
+    "epochs": 100（可选）,
+    "batch": 8（可选）,
+    "imgsz": 640（可选）,
+    "base_model": "yolov8n.pt"（可选）,
+    "device": "cpu" 或 "gpu"（可选）
+  }
+  ```
+- **POST** `/api/models/sync` - 同步模型状态（检查模型文件是否存在）
 - **GET** `/api/models/<id>/training` - 获取训练数据（损失曲线等）
 - **GET** `/api/models/<id>/metrics` - 获取模型指标（mAP、精确率、召回率、F1值）
 
 ### 数据集管理接口（需要管理员权限）
 
 - **GET** `/api/datasets` - 获取数据集列表
+  - 查询参数：`search`（搜索关键词）
 - **GET** `/api/datasets/<id>` - 获取数据集详情
 - **POST** `/api/datasets` - 创建数据集
   ```json
@@ -209,8 +288,25 @@ web-backend/
     "description": "描述（可选）"
   }
   ```
+- **PUT** `/api/datasets/<id>` - 更新数据集
 - **DELETE** `/api/datasets/<id>` - 删除数据集
-- **POST** `/api/datasets/<id>/upload` - 上传数据集图片（支持批量上传）
+- **POST** `/api/datasets/<id>/upload` - 上传数据集 ZIP 文件
+  - **请求体**：`multipart/form-data`
+    - `zip` 或 `file`: ZIP 文件
+  - **响应**：
+  ```json
+  {
+    "message": "数据集上传成功，共 1000 张图片",
+    "image_count": 1000,
+    "train_count": 700,
+    "val_count": 200,
+    "test_count": 100,
+    "file_size": 104857600,
+    "status": "validated",
+    "error_reason": null
+  }
+  ```
+- **POST** `/api/datasets/sync` - 同步数据集状态（检查数据集目录和 data.yaml 是否存在）
 
 ### 用户管理接口（需要管理员权限）
 
@@ -224,8 +320,27 @@ web-backend/
 
 - **GET** `/api/statistics` - 获取统计数据
   - 返回：总检测次数、佩戴/未佩戴统计、检测率、每日统计
+  - 每日统计按类型分组：`image`、`video`、`realtime`
+  ```json
+  {
+    "total_detections": 100,
+    "with_helmet": 80,
+    "without_helmet": 20,
+    "detection_rate": 0.8,
+    "daily_stats": [
+      {
+        "date": "2025-12-26",
+        "count": 50,
+        "image": 20,
+        "video": 25,
+        "realtime": 5
+      }
+    ]
+  }
+  ```
 - **GET** `/api/statistics/history` - 获取检测历史
   - 查询参数：`days`（可选，默认30天）
+  - 返回的检测记录包含 `detection_type` 字段（'image'、'video'、'realtime'）
 
 ## 默认账户
 
@@ -319,13 +434,24 @@ python3 init_db.py
 - 手动下载模型文件到 `models/` 目录
 - 或使用镜像源安装依赖
 
-### 6. 视频检测处理缓慢
+### 6. GPU 训练失败
+
+**原因**：GPU 不可用或 PyTorch 版本不兼容
+
+**解决方案**：
+- 检查 CUDA 是否已安装：`nvidia-smi`
+- 检查 PyTorch 是否支持 CUDA：`python3 -c "import torch; print(torch.cuda.is_available())"`
+- 如果 GPU 不可用，使用 CPU 训练（在创建模型时选择 CPU）
+- 安装 CUDA 版本的 PyTorch：`pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118`
+
+### 7. 视频检测处理缓慢
 
 **原因**：视频文件过大或未使用 GPU 加速
 
 **解决方案**：
 - 使用 GPU 版本的 PyTorch（需要 CUDA）
 - 减小视频分辨率
+- 调整检测 FPS（降低检测帧率可加快处理速度）
 - 增加服务器处理能力
 
 ## 性能优化建议
