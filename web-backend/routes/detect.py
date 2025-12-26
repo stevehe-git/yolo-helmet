@@ -25,8 +25,17 @@ def get_detection_service(model_id=None):
         try:
             return DetectionService(model.path)
         except Exception as e:
-            raise RuntimeError(f'无法加载模型: {str(e)}')
-    return DetectionService()
+            error_msg = str(e)
+            # 处理常见的模型加载错误
+            if 'OrderedDict' in error_msg or 'attribute' in error_msg.lower():
+                # 模型文件可能是旧版本格式或版本不兼容，尝试更宽松的加载
+                import traceback
+                print(f"Model loading error (possibly version incompatibility): {error_msg}")
+                print(traceback.format_exc())
+                raise RuntimeError(f'模型文件格式不兼容或版本不匹配。请检查模型文件是否正确，或尝试重新导入模型。错误详情: {error_msg}')
+            else:
+                raise RuntimeError(f'无法加载模型: {error_msg}')
+    raise ValueError('必须指定模型ID，不能使用默认模型')
 
 @detect_bp.route('/image', methods=['POST'])
 @login_required

@@ -15,7 +15,90 @@ class DetectionService:
             # 不再使用默认模型，必须明确指定模型路径
             raise ValueError('必须指定模型路径，不能使用默认模型')
         
-        self.model = YOLO(str(model_path))
+        model_path_str = str(model_path)
+        
+        try:
+            self.model = YOLO(model_path_str)
+        except Exception as e:
+            error_msg = str(e)
+            import traceback
+            print(f"Model loading error: {error_msg}")
+            print(f"Model path: {model_path_str}")
+            print(traceback.format_exc())
+            
+            # 处理常见的模型加载错误
+            if 'OrderedDict' in error_msg or ('attribute' in error_msg.lower() and 'to' in error_msg):
+                # 模型文件可能是旧版本格式或版本不兼容
+                # 尝试使用 torch 直接加载并修复权重文件
+                try:
+                    import torch
+                    print(f"Attempting to fix model file with OrderedDict issue: {model_path_str}")
+                    
+                    # 加载权重文件
+                    ckpt = torch.load(model_path_str, map_location='cpu')
+                    
+                    # 检查权重文件结构并尝试修复
+                    if isinstance(ckpt, dict):
+                        # 如果 'model' 是 OrderedDict，尝试修复
+                        if 'model' in ckpt:
+                            model_obj = ckpt['model']
+                            # 检查是否是 OrderedDict 格式
+                            from collections import OrderedDict
+                            if isinstance(model_obj, OrderedDict) or (hasattr(model_obj, 'keys') and not hasattr(model_obj, 'to')):
+                                print("Detected OrderedDict format in model weights")
+                                # 尝试使用 'ema' 如果存在
+                                if 'ema' in ckpt:
+                                    ema_obj = ckpt['ema']
+                                    if hasattr(ema_obj, 'to'):
+                                        print("Using 'ema' weights instead of 'model'")
+                                        ckpt['model'] = ema_obj
+                                    else:
+                                        print("'ema' is also OrderedDict, cannot fix automatically")
+                                        raise RuntimeError(f'模型文件格式不兼容：权重文件中的模型对象是 OrderedDict 格式，无法自动修复。这通常是因为模型文件与当前 YOLO 版本不兼容。请尝试重新训练模型或使用兼容的模型文件。')
+                                else:
+                                    print("No 'ema' found, cannot fix OrderedDict format")
+                                    raise RuntimeError(f'模型文件格式不兼容：权重文件中的模型对象是 OrderedDict 格式，无法自动修复。这通常是因为模型文件与当前 YOLO 版本不兼容。请尝试重新训练模型或使用兼容的模型文件。')
+                        
+                        # 如果修复成功，保存修复后的权重并重新加载
+                        if 'model' in ckpt and hasattr(ckpt['model'], 'to'):
+                            print("Model weights fixed, saving and reloading...")
+                            # 创建临时文件保存修复后的权重
+                            import tempfile
+                            import shutil
+                            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pt')
+                            temp_path = temp_file.name
+                            temp_file.close()
+                            
+                            try:
+                                torch.save(ckpt, temp_path)
+                                # 尝试加载修复后的模型
+                                self.model = YOLO(temp_path)
+                                print("Successfully loaded fixed model")
+                                # 清理临时文件
+                                import os
+                                os.unlink(temp_path)
+                            except Exception as e3:
+                                # 清理临时文件
+                                import os
+                                if os.path.exists(temp_path):
+                                    os.unlink(temp_path)
+                                print(f"Failed to load fixed model: {e3}")
+                                raise RuntimeError(f'模型文件格式不兼容：即使尝试修复后仍无法加载。请检查模型文件是否正确，或尝试重新导入模型。错误详情: {error_msg}')
+                        else:
+                            raise RuntimeError(f'模型文件格式不兼容：无法修复权重文件格式。请检查模型文件是否正确，或尝试重新导入模型。错误详情: {error_msg}')
+                    else:
+                        raise RuntimeError(f'模型文件格式不正确：无法识别权重文件格式。错误详情: {error_msg}')
+                except RuntimeError:
+                    # 重新抛出 RuntimeError
+                    raise
+                except Exception as e2:
+                    import traceback
+                    print(f"Model fix attempt failed: {e2}")
+                    print(traceback.format_exc())
+                    raise RuntimeError(f'模型文件格式不兼容或版本不匹配。请检查模型文件是否正确，或尝试重新导入模型。错误详情: {error_msg}')
+            else:
+                raise RuntimeError(f'无法加载模型: {error_msg}')
+        
         self.class_names = {0: 'with_helmet', 1: 'without_helmet'}
         # 支持动态置信度阈值
         self.confidence_threshold = confidence_threshold if confidence_threshold is not None else Config.CONFIDENCE_THRESHOLD
