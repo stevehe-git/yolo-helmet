@@ -185,11 +185,11 @@
           </video>
         </el-card>
 
-        <el-card style="margin-top: 20px">
+        <el-card style="margin-top: 20px" v-if="detectResult">
           <template #header>
             <span>关键帧检测结果</span>
           </template>
-          <el-row :gutter="20">
+          <el-row :gutter="20" v-if="filteredFrameResults && filteredFrameResults.length > 0">
             <el-col :span="8" v-for="(frame, index) in filteredFrameResults" :key="index">
               <div class="frame-result">
                 <img :src="`data:image/jpeg;base64,${frame.image}`" alt="Frame" />
@@ -201,7 +201,7 @@
               </div>
             </el-col>
           </el-row>
-          <el-empty v-if="filteredFrameResults.length === 0" description="没有检测到任何目标" />
+          <el-empty v-else description="没有检测到任何目标" />
         </el-card>
       </div>
     </el-card>
@@ -227,10 +227,10 @@ const detectResult = ref<VideoDetectResult | null>(null)
 
 // 过滤掉检测数为0的帧
 const filteredFrameResults = computed(() => {
-  if (!detectResult.value || !detectResult.value.frame_results) {
+  if (!detectResult.value || !detectResult.value.frame_results || !Array.isArray(detectResult.value.frame_results)) {
     return []
   }
-  return detectResult.value.frame_results.filter(frame => frame.stats.total > 0)
+  return detectResult.value.frame_results.filter((frame: any) => frame && frame.stats && frame.stats.total > 0)
 })
 
 const handleFileChange = (file: UploadFile) => {
