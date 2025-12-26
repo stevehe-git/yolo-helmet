@@ -45,6 +45,12 @@
     <el-card class="table-card">
       <el-table :data="models" style="width: 100%" v-loading="loading">
         <el-table-column prop="name" label="模型名称" min-width="150" />
+        <el-table-column label="模型类型" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.type === 'general'" type="success" effect="plain">通用模型</el-tag>
+            <el-tag v-else type="primary" effect="plain">自定义模型</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span>{{ row.description || '-' }}</span>
@@ -192,9 +198,15 @@
 
     <!-- 编辑模型对话框 -->
     <el-dialog v-model="showEditDialog" title="编辑模型" width="600px" :close-on-click-modal="false">
-      <el-form :model="editModelForm" :rules="modelRules" ref="editFormRef" label-width="120px">
+      <el-form :model="editModelForm" :rules="editModelRules" ref="editFormRef" label-width="120px">
         <el-form-item label="模型名称" prop="name">
           <el-input v-model="editModelForm.name" placeholder="请输入模型名称" />
+        </el-form-item>
+        <el-form-item label="模型类型" prop="type">
+          <el-select v-model="editModelForm.type" placeholder="选择模型类型" style="width: 100%">
+            <el-option label="通用模型" value="general" />
+            <el-option label="自定义模型" value="custom" />
+          </el-select>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -273,6 +285,12 @@
             placeholder="请输入模型名称"
           />
         </el-form-item>
+        <el-form-item label="模型类型" prop="type">
+          <el-select v-model="importModelForm.type" placeholder="选择模型类型" style="width: 100%">
+            <el-option label="通用模型" value="general" />
+            <el-option label="自定义模型" value="custom" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="模型描述" prop="description">
           <el-input
             v-model="importModelForm.description"
@@ -331,6 +349,7 @@ const newModel = ref({
 
 const editModelForm = ref({
   name: '',
+  type: 'custom' as 'general' | 'custom',
   description: '',
   dataset_id: undefined as number | undefined,
   base_model: 'yolov8n.pt',
@@ -338,8 +357,14 @@ const editModelForm = ref({
   batch: 8
 })
 
+const editModelRules: FormRules = {
+  name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择模型类型', trigger: 'change' }]
+}
+
 const importModelForm = ref({
   name: '',
+  type: 'custom' as 'general' | 'custom',
   description: '',
   model_file: null as File | null
 })
@@ -348,6 +373,7 @@ const fileList = ref<any[]>([])
 
 const importModelRules: FormRules = {
   name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择模型类型', trigger: 'change' }],
   model_file: [{ required: true, message: '请选择要导入的模型文件', trigger: 'change' }]
 }
 
@@ -421,6 +447,7 @@ const cancelImport = () => {
   showImportDialog.value = false
   importModelForm.value = {
     name: '',
+    type: 'custom',
     description: '',
     model_file: null
   }
@@ -446,6 +473,7 @@ const handleImportModel = async () => {
         const formData = new FormData()
         formData.append('model_file', importModelForm.value.model_file)
         formData.append('name', importModelForm.value.name)
+        formData.append('type', importModelForm.value.type)
         if (importModelForm.value.description) {
           formData.append('description', importModelForm.value.description)
         }
@@ -543,6 +571,7 @@ const editModel = (model: Model) => {
   const trainingParams = model.training_params || {}
   editModelForm.value = {
     name: model.name,
+    type: model.type || 'custom',
     description: model.description || '',
     dataset_id: trainingParams.dataset_id,
     base_model: trainingParams.base_model || 'yolov8n.pt',
@@ -558,6 +587,7 @@ const cancelEdit = () => {
   editingModel.value = null
   editModelForm.value = {
     name: '',
+    type: 'custom',
     description: '',
     dataset_id: undefined,
     base_model: 'yolov8n.pt',
@@ -578,6 +608,7 @@ const handleUpdateModel = async () => {
         updating.value = true
         await modelApi.updateModel(editingModel.value!.id, {
           name: editModelForm.value.name,
+          type: editModelForm.value.type,
           description: editModelForm.value.description,
           training_params: {
             dataset_id: editModelForm.value.dataset_id,

@@ -47,7 +47,7 @@ export const modelApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 300000
   }),
-  updateModel: (id: number, data: { name?: string; description?: string; training_params?: any }) => api.put<Model>(`/models/${id}`, data),
+  updateModel: (id: number, data: { name?: string; type?: string; description?: string; training_params?: any }) => api.put<Model>(`/models/${id}`, data),
   deleteModel: (id: number) => api.delete(`/models/${id}`),
   trainModel: (data: { model_id: number; dataset_id?: number; epochs?: number; batch?: number; imgsz?: number; base_model?: string }) => 
     api.post('/models/train', data),

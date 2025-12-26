@@ -14,11 +14,33 @@
             <el-descriptions-item label="模型ID">{{ model?.id }}</el-descriptions-item>
             <el-descriptions-item label="模型名称">{{ model?.name }}</el-descriptions-item>
             <el-descriptions-item label="模型类型">
-              <el-tag :type="model?.type === 'general' ? 'success' : 'warning'">
-                {{ model?.type === 'general' ? '通用模型' : '定制模型' }}
+              <el-tag :type="model?.type === 'general' ? 'success' : 'primary'">
+                {{ model?.type === 'general' ? '通用模型' : '自定义模型' }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ model?.created_at }}</el-descriptions-item>
+            <el-descriptions-item label="训练数据集">
+              {{ model?.dataset_name || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="基础模型">
+              {{ getBaseModelName(model?.training_params?.base_model) || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="训练参数" :span="2">
+              <div v-if="model?.training_params">
+                <div v-if="model.training_params.epochs">迭代次数: {{ model.training_params.epochs }}</div>
+                <div v-if="model.training_params.batch">批次大小: {{ model.training_params.batch }}</div>
+                <div v-if="model.training_params.imgsz">图像尺寸: {{ model.training_params.imgsz }}</div>
+                <span v-if="!model.training_params.epochs && !model.training_params.batch && !model.training_params.imgsz">-</span>
+              </div>
+              <span v-else>-</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatDate(model?.created_at) }}</el-descriptions-item>
+            <el-descriptions-item label="模型状态">
+              <el-tag v-if="model?.status === 'published'" type="info">已发布</el-tag>
+              <el-tag v-else-if="model?.status === 'completed'" type="success">训练完成</el-tag>
+              <el-tag v-else-if="model?.status === 'training'" type="warning">训练中</el-tag>
+              <el-tag v-else-if="model?.status === 'failed'" type="danger">训练失败</el-tag>
+              <el-tag v-else type="info">待训练</el-tag>
+            </el-descriptions-item>
           </el-descriptions>
         </el-tab-pane>
 
@@ -122,6 +144,31 @@ const metricsChartRef = ref<HTMLDivElement | null>(null)
 
 let lossChart: ECharts | null = null
 let metricsChart: ECharts | null = null
+
+// 获取基础模型显示名称
+const getBaseModelName = (baseModel?: string): string => {
+  if (!baseModel) return '-'
+  // 移除.pt后缀并格式化
+  const name = baseModel.replace('.pt', '')
+  return name.toUpperCase()
+}
+
+// 格式化日期
+const formatDate = (dateStr?: string): string => {
+  if (!dateStr) return '-'
+  try {
+    const date = new Date(dateStr)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return dateStr
+  }
+}
 
 // 检查DOM元素是否有有效的尺寸
 const checkElementSize = (element: HTMLElement | null): boolean => {

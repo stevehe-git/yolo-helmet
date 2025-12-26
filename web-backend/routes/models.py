@@ -162,10 +162,15 @@ def import_model():
     
     # 获取表单数据
     name = request.form.get('name', '').strip()
+    model_type = request.form.get('type', 'custom').strip()  # 默认为custom
     description = request.form.get('description', '').strip()
     
     if not name:
         return jsonify({'message': '模型名称不能为空'}), 400
+    
+    # 验证模型类型
+    if model_type not in ['general', 'custom']:
+        return jsonify({'message': '无效的模型类型，必须是general或custom'}), 400
     
     # 检查模型名称是否已存在
     existing_model = Model.query.filter_by(name=name).first()
@@ -203,7 +208,7 @@ def import_model():
         # 创建模型记录
         model = Model(
             name=name,
-            type='custom',
+            type=model_type,
             path=str(target_path.absolute()),
             description=description,
             status='completed'  # 导入的模型直接标记为已完成
@@ -241,6 +246,13 @@ def update_model(model_id):
         if not name:
             return jsonify({'message': '模型名称不能为空'}), 400
         model.name = name
+    
+    # 更新模型类型
+    if 'type' in data:
+        model_type = data.get('type', '').strip()
+        if model_type not in ['general', 'custom']:
+            return jsonify({'message': '无效的模型类型，必须是general或custom'}), 400
+        model.type = model_type
     
     # 更新描述
     if 'description' in data:
