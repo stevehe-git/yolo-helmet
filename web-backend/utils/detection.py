@@ -6,6 +6,8 @@ import base64
 from io import BytesIO
 from pathlib import Path
 from config import Config
+import subprocess
+import tempfile
 
 class DetectionService:
     def __init__(self, model_path=None, confidence_threshold=None):
@@ -116,8 +118,11 @@ class DetectionService:
         total_without_helmet = 0
         frame_count = 0
         
+        # 确保 output_path 是 Path 对象
         if output_path is None:
             output_path = Config.UPLOAD_FOLDER / 'results' / f'result_{Path(video_path).stem}.mp4'
+        elif isinstance(output_path, str):
+            output_path = Path(output_path)
         
         # 使用更兼容的编码格式
         # 优先尝试使用XVID或X264，这些格式在浏览器中兼容性更好
@@ -126,10 +131,12 @@ class DetectionService:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         # 尝试多种编码格式，找到可用的
+        # 优先使用H.264编码（avc1），这是浏览器最兼容的格式
         codecs_to_try = [
-            ('XVID', cv2.VideoWriter_fourcc(*'XVID')),  # XVID编码，浏览器兼容性好
-            ('mp4v', cv2.VideoWriter_fourcc(*'mp4v')),  # MPEG-4编码
-            ('H264', cv2.VideoWriter_fourcc(*'H264')),  # H.264编码
+            ('avc1', cv2.VideoWriter_fourcc(*'avc1')),  # H.264编码，浏览器兼容性最好
+            ('H264', cv2.VideoWriter_fourcc(*'H264')),  # H.264编码（备用）
+            ('XVID', cv2.VideoWriter_fourcc(*'XVID')),  # XVID编码
+            ('mp4v', cv2.VideoWriter_fourcc(*'mp4v')),  # MPEG-4编码（最后备选）
         ]
         
         out = None
@@ -138,10 +145,11 @@ class DetectionService:
             out = cv2.VideoWriter(str(output_path), fourcc, video_fps, (width, height))
             if out.isOpened():
                 used_codec = codec_name
-                print(f"Using codec: {codec_name}")
+                print(f"Using codec: {codec_name} for video output")
                 break
             else:
-                out.release() if out else None
+                if out:
+                    out.release()
         
         if not out or not out.isOpened():
             raise RuntimeError(f"Failed to initialize video writer with any codec. Tried: {[c[0] for c in codecs_to_try]}")
@@ -204,6 +212,70 @@ class DetectionService:
         
         cap.release()
         out.release()
+        
+        # 确保视频文件被正确写入和关闭
+        # 检查输出文件是否存在且大小大于0
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise RuntimeError(f"Video file was not created or is empty: {output_path}")
+        
+        print(f"Video saved successfully (temporary): {output_path}, size: {output_path.stat().st_size} bytes, codec: {used_codec}")
+        
+        # 如果使用的不是H.264编码，使用ffmpeg转换为H.264格式以确保浏览器兼容性
+        if used_codec not in ['avc1', 'H264']:
+            temp_output = None
+            try:
+                # 创建临时文件用于转换
+                temp_output = output_path.parent / f"temp_{output_path.name}"
+                output_path.rename(temp_output)
+                
+                # 使用ffmpeg转换为H.264格式
+                ffmpeg_cmd = [
+                    'ffmpeg',
+                    '-i', str(temp_output),
+                    '-c:v', 'libx264',  # 使用H.264编码
+                    '-preset', 'fast',  # 快速编码
+                    '-crf', '23',  # 质量参数（18-28，23是默认值）
+                    '-c:a', 'copy',  # 如果有音频，直接复制
+                    '-movflags', '+faststart',  # 优化网络播放
+                    '-y',  # 覆盖输出文件
+                    str(output_path)
+                ]
+                
+                print(f"Converting video to H.264 using ffmpeg...")
+                result = subprocess.run(
+                    ffmpeg_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5分钟超时
+                )
+                
+                if result.returncode == 0:
+                    # 删除临时文件
+                    if temp_output and temp_output.exists():
+                        temp_output.unlink()
+                    print(f"Video converted to H.264 successfully: {output_path}, size: {output_path.stat().st_size} bytes")
+                else:
+                    # 转换失败，恢复原文件
+                    print(f"FFmpeg conversion failed: {result.stderr}")
+                    if temp_output and temp_output.exists():
+                        temp_output.rename(output_path)
+                    print(f"Using original video file with codec: {used_codec}")
+            except subprocess.TimeoutExpired:
+                print("FFmpeg conversion timed out, using original video")
+                if temp_output and temp_output.exists():
+                    temp_output.rename(output_path)
+            except FileNotFoundError:
+                print("FFmpeg not found, using original video with codec:", used_codec)
+                if temp_output and temp_output.exists():
+                    temp_output.rename(output_path)
+            except Exception as e:
+                print(f"Error during video conversion: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                if temp_output and temp_output.exists():
+                    temp_output.rename(output_path)
+        else:
+            print(f"Video already in H.264 format: {output_path}, size: {output_path.stat().st_size} bytes")
         
         return {
             'video_url': f'/api/detect/uploads/results/{Path(output_path).name}',

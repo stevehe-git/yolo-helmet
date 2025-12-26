@@ -141,6 +141,10 @@ def detect_video():
         # 模型相关错误
         return jsonify({'message': f'模型错误: {str(e)}'}), 400
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Video detection error: {str(e)}")
+        print(f"Traceback: {error_trace}")
         return jsonify({'message': f'检测失败: {str(e)}'}), 500
     finally:
         # Clean up uploaded file

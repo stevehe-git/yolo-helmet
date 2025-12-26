@@ -171,16 +171,17 @@
             <span>视频预览</span>
           </template>
           <video 
+            ref="videoPlayer"
             controls 
             style="width: 100%"
             preload="metadata"
             @error="handleVideoError"
             @loadedmetadata="handleVideoLoaded"
+            @canplay="handleVideoCanPlay"
+            @loadstart="handleVideoLoadStart"
           >
             <!-- MP4格式 - 广泛支持，包括Safari和移动设备 -->
-            <source :src="detectResult.video_url" type="video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;" />
-            <!-- WebM格式 - Chrome和Firefox支持，文件更小 -->
-            <source v-if="(detectResult as any).video_url_webm" :src="(detectResult as any).video_url_webm" type="video/webm; codecs=&quot;vp8, vorbis&quot;" />
+            <source :src="detectResult.video_url" type="video/mp4" />
             <p>您的浏览器不支持HTML5视频播放。请使用现代浏览器（如Chrome、Firefox、Safari或Edge）访问。</p>
           </video>
         </el-card>
@@ -209,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { detectApi, type VideoDetectResult } from '../api/detect'
 import { modelApi, type Model } from '../api/model'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -286,6 +287,16 @@ const handleVideoError = (event: any) => {
 const handleVideoLoaded = () => {
   console.log('视频元数据加载成功')
 }
+
+const handleVideoCanPlay = () => {
+  console.log('视频可以播放')
+}
+
+const handleVideoLoadStart = () => {
+  console.log('视频开始加载:', detectResult.value?.video_url)
+}
+
+const videoPlayer = ref<HTMLVideoElement | null>(null)
 
 const handleModelChange = (modelId: number | undefined) => {
   if (modelId) {
@@ -382,6 +393,13 @@ const handleDetect = async () => {
         detectResult.value.video_url = baseURL + detectResult.value.video_url
       }
       console.log('视频URL:', detectResult.value.video_url)
+      
+      // 等待DOM更新后，强制重新加载视频
+      await nextTick()
+      if (videoPlayer.value) {
+        videoPlayer.value.load()
+        console.log('视频元素已加载，尝试播放')
+      }
     }
     
     ElMessage.success('检测完成')
